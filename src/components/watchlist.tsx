@@ -27,6 +27,7 @@ import { StatusMessage, useAnalysis } from "./analysis-actions";
 import { MobileTickers } from "./mobile-tickers";
 import { AnalysisDialog } from "./analysis-dialog";
 import type { SocialConfiguration } from "@/types/social";
+import { ProviderSelect } from "./provider-select";
 
 const colors: Record<string, string> = {
   AAPL: "bg-slate-500/15 text-slate-400",
@@ -61,7 +62,7 @@ export function Watchlist({
   };
 }) {
   const router = useRouter();
-  const { busy, progress, message, analyze, setMessage } = useAnalysis();
+  const { busy, progress, message, analyze, setMessage, provider, setProvider } = useAnalysis();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [showDisabled, setShowDisabled] = useState(false);
@@ -164,7 +165,8 @@ export function Watchlist({
             A consistent view of your watchlist. Every recommendation backed by evidence.
           </p>
         </div>
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <ProviderSelect value={provider} onChange={setProvider} disabled={!!busy || running} />
           <Button variant="outline" onClick={() => openAdd()} disabled={adding || !!busy}>
             <Plus />
             Add ticker
@@ -192,7 +194,12 @@ export function Watchlist({
             <p className="text-sm font-medium">Connect your research providers</p>
             <p className="mt-1 text-xs leading-6 text-muted-foreground">
               Set {config.missing.join(", ")} in the server environment, then restart the app. Live
-              recommendations require real provider data and a successful Jev response.
+              recommendations require real provider data and a successful AI response. Configure
+              your AI provider in{" "}
+              <Link href="/settings" className="text-primary underline">
+                AI settings
+              </Link>
+              .
             </p>
           </div>
         </div>

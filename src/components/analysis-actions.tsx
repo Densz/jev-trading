@@ -6,12 +6,15 @@ import { Button } from "./ui/button";
 import { AnalysisDialog } from "./analysis-dialog";
 import type { RunResult } from "@/types/analysis";
 import type { SocialConfiguration } from "@/types/social";
+import type { AiProvider } from "@/lib/ai/config";
+import { ProviderSelect } from "./provider-select";
 
 export function useAnalysis() {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [progress, setProgress] = useState(0);
+  const [provider, setProvider] = useState<AiProvider | "default">("default");
   async function analyze(
     symbol?: string,
     force = false,
@@ -32,6 +35,7 @@ export function useAnalysis() {
             force,
             tweetLimit,
             ...(includeAuthorProfiles ? { includeAuthorProfiles: true } : {}),
+            ...(provider === "default" ? {} : { provider }),
           }),
         },
       );
@@ -97,7 +101,7 @@ export function useAnalysis() {
       router.refresh();
     }
   }
-  return { busy, progress, message, analyze, setMessage };
+  return { busy, progress, message, analyze, setMessage, provider, setProvider };
 }
 export function StatusMessage({ message }: { message: { text: string; error: boolean } | null }) {
   if (!message) return null;
@@ -125,10 +129,13 @@ export function TickerAnalyze({
   running: boolean;
   config: SocialConfiguration;
 }) {
-  const { busy, message, analyze } = useAnalysis();
+  const { busy, message, analyze, provider, setProvider } = useAnalysis();
   const [confirm, setConfirm] = useState(false);
   return (
     <div>
+      <div className="mb-3">
+        <ProviderSelect value={provider} onChange={setProvider} disabled={!!busy || running} />
+      </div>
       <Button disabled={!enabled || !!busy || running} onClick={() => setConfirm(true)}>
         {busy || running ? (
           <Loader2 className="animate-spin" />

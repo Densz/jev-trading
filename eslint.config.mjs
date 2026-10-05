@@ -9,6 +9,7 @@ export default defineConfig([
     ".db-backups/**",
     ".next/**",
     ".next-e2e/**",
+    ".next-ai-e2e/**",
     ".next-production/**",
     "src/generated/**",
     "next-env.d.ts",

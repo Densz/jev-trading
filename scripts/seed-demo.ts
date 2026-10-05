@@ -15,7 +15,9 @@ try {
       update: {},
     });
     console.info(
-      JSON.stringify(await analysisService().analyzeTicker(symbol, { trigger: "demo-seed" })),
+      JSON.stringify(
+        await (await analysisService()).analyzeTicker(symbol, { trigger: "demo-seed" }),
+      ),
     );
   }
 } finally {

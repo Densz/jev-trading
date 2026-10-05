@@ -12,6 +12,7 @@ import {
   Moon,
   ShieldCheck,
   Sun,
+  Settings,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ const links = [
   { href: "/", label: "Watchlist", icon: LayoutDashboard },
   { href: "/history", label: "Analysis history", icon: Clock3 },
   { href: "/usage", label: "API usage", icon: Coins },
+  { href: "/settings", label: "AI settings", icon: Settings },
 ];
 export function AppShell({ children, demo }: { children: React.ReactNode; demo: boolean }) {
   const path = usePathname();
@@ -78,7 +80,7 @@ export function AppShell({ children, demo }: { children: React.ReactNode; demo: 
             </Link>
           </div>
           <p className="mt-5 text-center font-mono text-[10px] tracking-wider text-muted-foreground">
-            POWERED BY JEV / TYPESAFE AI
+            JEV · OPENAI · DEEPSEEK · CLAUDE
           </p>
         </div>
       </aside>

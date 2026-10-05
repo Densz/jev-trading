@@ -22,6 +22,7 @@ import { RunPolling } from "@/components/run-polling";
 import { CoverageNotice, FinancialResearch } from "@/components/financial-research";
 import { SocialResearch } from "@/components/social-research";
 import type { Metadata } from "next";
+import { aiProviders, aiProviderSchema } from "@/lib/ai/config";
 
 export async function generateMetadata({
   params,
@@ -146,8 +147,10 @@ export default async function TickerPage({
                 />
               </div>
               <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
-                Confidence in {selected.decision} given the available information. Not a probability
-                of a price increase.
+                {selected.engine === "jev" || selected.engine === "demo"
+                  ? `Confidence in ${selected.decision} given the available information.`
+                  : "Subjective AI certainty; not calibrated or comparable to Jev confidence."}{" "}
+                Not a probability of a price increase.
               </p>
             </div>
           </div>
@@ -167,7 +170,9 @@ export default async function TickerPage({
             <p className="mt-4 text-[10px] text-muted-foreground">
               {selected.engine === "demo"
                 ? "Synthetic demonstration result"
-                : "Jev classification · source-grounded explanation assembled in code"}{" "}
+                : selected.engine === "jev"
+                  ? "Jev classification · source-grounded explanation assembled in code"
+                  : `${aiProviderSchema.safeParse(selected.engine).success ? aiProviders[selected.engine as keyof typeof aiProviders].label : selected.engine} · AI interpretation of supplied evidence`}{" "}
               · {selected.model} · {selected.input.rubricVersion}
             </p>
           </section>
@@ -389,7 +394,9 @@ export default async function TickerPage({
                     <DecisionBadge decision={a.decision} />
                   </td>
                   <td className="font-mono">{Math.round(a.confidence * 100)}%</td>
-                  <td className="text-muted-foreground">{a.model}</td>
+                  <td className="text-muted-foreground">
+                    {a.engine} / {a.model}
+                  </td>
                   <td>
                     <Link
                       href={`/tickers/${data.ticker.symbol}?analysis=${a.id}`}

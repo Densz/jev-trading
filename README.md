@@ -2,6 +2,7 @@
 
 A single-user decision-support dashboard built with Next.js App Router, React, TypeScript, Tailwind CSS, shadcn-style Radix components, PostgreSQL, Prisma, and Zod.
 Jev classifies BUY / HOLD / SELL through the official `@typesafe-ai/sdk` package.
+OpenAI, DeepSeek, or Claude can also interpret the supplied evidence and generate explanations.
 The application has no broker connection and never executes trades.
 
 ## Start locally
@@ -22,7 +23,7 @@ The development server also binds only to localhost.
 Prisma migrations are checked in; client generation runs on install and build.
 The database volume preserves tickers, runs, usage, and analysis history across container restarts.
 
-For live research, obtain your own TypeSafe, Twelve Data, and Finnhub API keys and populate `.env`.
+For live research, populate `.env` with Twelve Data and Finnhub API keys, then configure an AI provider below. Jev can also use `TYPESAFE_API_KEY` from `.env`.
 Set `SEC_USER_AGENT="Thesis your-real-contact@your-domain.com"` to enable official financial reports.
 The SEC requires a declared application and contact email; no SEC API key or subscription is required.
 Without this setting, financial enrichment is explicitly unavailable and coverage is labeled limited, not silently substituted with trailing ratios.
@@ -81,7 +82,7 @@ Demo mode is an explicit configuration, never a fallback after a live provider f
 
 ## Configuration
 
-All configuration is server-side; no secret uses a `NEXT_PUBLIC_*` variable.
+Secrets stay server-side; no secret uses a `NEXT_PUBLIC_*` variable. AI keys and model choices can be managed in the application.
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
@@ -95,13 +96,14 @@ All configuration is server-side; no secret uses a `NEXT_PUBLIC_*` variable.
 | `X_PROFILE_CACHE_DAYS` | No | Persistent profile cache lifetime, default `30` days; configurable from `1-365`. |
 | `X_PROFILE_READ_COST_USD` | No | Estimated price per returned X user profile, default `0.01`; fresh cached profiles require no new X read. |
 | `SEC_USER_AGENT` | Financial enrichment | Application name and real contact email for SEC fair access; never sent to Jev or exposed to clients. |
-| `TYPESAFE_API_KEY` | Live | Official TypeSafe API key. |
+| `TYPESAFE_API_KEY` | Jev fallback | Official TypeSafe API key; a saved Jev key takes precedence. |
+| `API_KEY_ENCRYPTION_KEY` | Saved API keys | Independent, random 32-byte key encoded as base64. Keep outside the database. |
 | `TYPESAFE_MODEL` | No | Defaults to pinned `jev-1.13.0`; the returned model version is stored. |
 | `INVESTMENT_HORIZON` | No | `medium-term` (3-12 months), `long-term` (1-3 years), or `short-term` (days-weeks). |
 | `TWELVE_DATA_CREDITS_PER_MINUTE` | No | Defaults to 8; only raise to match your provider plan. |
 | `DEMO_MODE` | No | Defaults to `false`; set `true` for synthetic data. |
 | `JEV_INPUT_USD_PER_MILLION` | No | Estimated input-token price; defaults to `0.042`. |
-| `APP_PASSWORD` | Production | At least 16 characters; HTTP Basic username is `personal`. |
+| `APP_PASSWORD` | Production / saved keys | At least 16 characters; HTTP Basic username is `personal`. |
 | `APP_ORIGIN` | Reverse proxy | Optional canonical origin, such as `https://research.example.com`, for write-origin checks. |
 | `CRON_SECRET` | HTTP cron | At least 32 random characters; authenticated cron endpoint is disabled without it. |
 | `DAILY_CRON` | No | Scheduler expression in UTC; defaults to `15 22 * * 1-5`. |
@@ -111,6 +113,29 @@ All configuration is server-side; no secret uses a `NEXT_PUBLIC_*` variable.
 Changing an investment horizon changes future analyses, not existing records.
 The exact horizon is stored in each normalized input.
 V1 targets US-listed equities; international coverage requires a deliberate provider/normalization extension.
+
+### AI providers and encrypted keys
+
+1. Apply the checked-in migration with `pnpm prisma migrate deploy`.
+2. Set a random `APP_PASSWORD` of at least 16 characters and generate a separate encryption key:
+
+   ```bash
+   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+   ```
+
+   Store the generated value as `API_KEY_ENCRYPTION_KEY` in the server environment or secret manager, then restart the application. Use HTTPS for remote access.
+3. Open **AI settings** (`/settings`), enter the provider's API key and model ID, and save. Only the last four characters are displayed afterwards. **Test** sends a small billed request using the saved key/model; it is disabled in demo mode.
+4. Choose the default provider for scheduled runs, or select a provider before a manual ticker or batch analysis. Suggested model IDs are editable because account entitlements and provider catalogs change. An invalid or unavailable model fails visibly without saving a recommendation.
+
+Supported providers are Jev, OpenAI (Chat Completions with structured JSON), DeepSeek (JSON mode), and Claude (Anthropic Messages with validated JSON). Keys are encrypted using AES-256-GCM with random nonces and provider-bound authenticated data. The encryption key is never stored in PostgreSQL. API responses contain only key status and a masked suffix; credentials are excluded from normalized analysis inputs, saved engine results, and application logs. Network calls use fixed provider endpoints and reject redirects.
+
+This is one password-protected personal workspace. Keys belong to the workspace, not separate user accounts. Production hosting must keep the server environment and database administration restricted. Save and test operations also require `APP_PASSWORD` in development. Market/news credentials remain server environment variables.
+
+Keep the encryption key securely backed up separately from database backups. Changing or losing it prevents decryption of existing saved keys. To rotate, retain the old value until you are ready to replace every saved API key under the new value; this release does not automatically re-encrypt keys. Delete removes the stored credential and resets its default selection to Jev; a Jev environment key remains available. Revoke credentials at the provider to invalidate previously issued keys and backup copies.
+
+The selected provider produces BUY/HOLD/SELL, an explanation, bullish/bearish factors and risks from the same bounded evidence context. Returned model versions and the requested model ID are retained in history. Daily deduplication is scoped to provider and requested model; re-analysis deliberately saves an additional record. To compare providers, run each explicitly and open their saved records. AI certainty scores are subjective and uncalibrated, unlike Jev's concentration formula, and should not be compared numerically.
+
+OpenAI, DeepSeek, and Claude analyses send at most 64,000 context characters and request at most 4,096 completion tokens with a 60-second timeout. Those paid requests are not automatically retried; Jev retains its existing bounded retry policy. Token usage is recorded when returned, including on invalid decisions; model prices are left unknown rather than guessed. Set spending limits in your provider accounts. A ChatGPT subscription does not include API billing. Demo analyses and demo connection tests never call external APIs.
 
 ## Architecture
 
@@ -341,6 +366,8 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 pnpm test:integration
 pnpm test:integration:db
+pnpm test:integration:ai
+pnpm test:e2e:ai
 ```
 
 Domain tests cover period normalization, cumulative cash-flow derivation, fourth-quarter reconstruction, EPS safety, currencies, restatements/as-of filtering, bounded source excerpts, coverage, news identity, confidence/output validation, partial failures, successful persistence, duplicate daily prevention, retries after failure, active-run exclusion, and batch isolation.
@@ -348,6 +375,7 @@ Browser tests exercise the complete user workflow, dark/light themes, responsive
 Provider integration exercises real SDK serialization and all live adapters against deterministic HTTP fixtures with actual PostgreSQL cache, throttle, usage, and failure persistence.
 Snapshot integration tests create a separate database, apply the initial application migration and a fixture migration through Prisma, restore the pre-migration snapshot, and verify that the migration can be applied again.
 They also check safety snapshots, corruption rejection, failed-restore preservation, concurrent-operation refusal, and archive permissions.
+AI tests cover authenticated encryption, response bounds, provider serialization, invalid outputs, token usage, settings persistence, model-scoped deduplication, key replacement/deletion, and the browser settings workflow.
 No tests call paid APIs.
 The test setup creates and migrates a dedicated database ending in `_test`; only that isolated database is reset by browser tests.
 Run browser and provider integration tests sequentially because they share this test database.

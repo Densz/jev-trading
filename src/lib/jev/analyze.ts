@@ -141,10 +141,14 @@ export function interpretJevResponse(input: AnalysisInput, raw: unknown): Engine
 }
 
 export class JevDecisionEngine implements DecisionEngine {
-  constructor(private gateway: ExternalGateway) {}
+  constructor(
+    private gateway: ExternalGateway,
+    private configuration?: { apiKey: string; model: string },
+  ) {}
   async analyze(input: AnalysisInput): Promise<EngineResult> {
     const request = buildJevRequest(input);
-    const client = createJevClient(this.gateway.fetcher);
+    if (this.configuration) request.model = this.configuration.model;
+    const client = createJevClient(this.gateway.fetcher, this.configuration);
     for (let attempt = 1; attempt <= 3; attempt++) {
       const started = Date.now();
       let received = false;

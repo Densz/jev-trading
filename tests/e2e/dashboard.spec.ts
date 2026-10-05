@@ -188,7 +188,7 @@ test("author lookups are optional and profile snapshots remain visibly unverifie
 
 test("complete research workflow persists analyses and preserves disabled ticker history", async ({
   page,
-}) => {
+}, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
@@ -209,11 +209,11 @@ test("complete research workflow persists analyses and preserves disabled ticker
   await expect(page.getByRole("row").filter({ hasText: "AAPL" })).toContainText("BUY");
   await expect(page.getByRole("row").filter({ hasText: "NVDA" })).toContainText("HOLD");
   await expect(page.getByRole("row").filter({ hasText: "TSLA" })).toContainText("SELL");
-  await page.screenshot({ path: "/private/tmp/jev-dashboard-dark.png", fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("jev-dashboard-dark.png"), fullPage: true });
   await page.getByRole("button", { name: "Toggle color theme" }).click();
   await expect(page.locator("html")).not.toHaveClass(/dark/);
   await page.screenshot({
-    path: "/private/tmp/jev-dashboard-light.png",
+    path: testInfo.outputPath("jev-dashboard-light.png"),
     fullPage: true,
     animations: "disabled",
   });
@@ -233,7 +233,7 @@ test("complete research workflow persists analyses and preserves disabled ticker
   await expect(page.getByText('"rubricVersion": "thesis-v2"', { exact: false })).toBeVisible();
   await page.getByText("Inspect normalized input & engine output").click();
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: "/private/tmp/jev-ticker-detail.png", fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("jev-ticker-detail.png"), fullPage: true });
   await page.getByRole("button", { name: "Re-analyze", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Re-analyze", exact: true }).click();
   await expect(page.getByText("AAPL analysis saved.")).toBeVisible();
@@ -257,7 +257,7 @@ test("complete research workflow persists analyses and preserves disabled ticker
   await expect(page.getByRole("row")).toHaveCount(2);
   await page.getByLabel("Search watchlist").fill("");
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: "/private/tmp/jev-dashboard-mobile.png", fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath("jev-dashboard-mobile.png"), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
@@ -267,7 +267,7 @@ test("complete research workflow persists analyses and preserves disabled ticker
 test("financial research stays readable on mobile and legacy snapshots remain immutable", async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   await request.post("/api/tickers", { data: { symbol: "NVDA" } });
   await request.post("/api/tickers/NVDA/analyze", { data: {} });
   await page.goto("/tickers/NVDA");
@@ -283,14 +283,17 @@ test("financial research stays readable on mobile and legacy snapshots remain im
   );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: "/private/tmp/jev-financial-research-desktop.png",
+    path: testInfo.outputPath("jev-financial-research-desktop.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
-  await page.screenshot({ path: "/private/tmp/jev-financial-research-mobile.png", fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("jev-financial-research-mobile.png"),
+    fullPage: true,
+  });
   const client = new Client({ connectionString: testDatabaseUrl() });
   let id: string;
   try {

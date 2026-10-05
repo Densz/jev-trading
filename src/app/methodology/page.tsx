@@ -73,6 +73,17 @@ export default function MethodologyPage() {
           </p>
         </div>
         <div>
+          <h2 className="text-sm font-medium">Optional AI interpretations</h2>
+          <p className="mt-2 text-xs leading-6 text-muted-foreground">
+            OpenAI, DeepSeek, and Claude can interpret the same normalized evidence instead of Jev.
+            They generate an explanation, supporting and opposing factors, and risks. Responses are
+            validated before saving. Their confidence is a subjective estimate, not a measured
+            probability distribution or a score comparable to Jev. Review sources and missing data
+            even when multiple models agree. Choose a provider in AI settings or for a manual run;
+            all successful results retain the provider and returned model version in history.
+          </p>
+        </div>
+        <div>
           <h2 className="text-sm font-medium">What confidence means</h2>
           <p className="mt-2 text-xs leading-6 text-muted-foreground">
             Confidence describes how concentrated Jev’s probability distribution is for the

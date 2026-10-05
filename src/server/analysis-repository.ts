@@ -7,6 +7,7 @@ import type { AnalysisRepository, Claim } from "@/lib/analysis/pipeline";
 import type { AnalysisInput, EngineResult, MarketHistory } from "@/types/analysis";
 
 export class PrismaAnalysisRepository implements AnalysisRepository {
+  constructor(private selection?: { engine: string; model: string }) {}
   async claim(symbol: string, force: boolean, trigger: string, now: Date): Promise<Claim> {
     return db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`analysis:${symbol}`}))`;
@@ -32,12 +33,26 @@ export class PrismaAnalysisRepository implements AnalysisRepository {
       if (
         !force &&
         (await tx.analysis.findFirst({
-          where: { tickerId: ticker.id, dataMode: mode, analysisDay: day },
+          where: {
+            tickerId: ticker.id,
+            dataMode: mode,
+            analysisDay: day,
+            ...(this.selection
+              ? {
+                  engine: this.selection.engine,
+                  OR: [
+                    { requestedModel: this.selection.model },
+                    { requestedModel: null, model: this.selection.model },
+                  ],
+                }
+              : {}),
+          },
         }))
       )
         return {
           status: "skipped",
-          message: "Already analyzed successfully today (UTC). Use Re-analyze to force a new run.",
+          message:
+            "Already analyzed successfully today (UTC) with this provider and model. Use Re-analyze to force a new run.",
         };
       const run = await tx.analysisRun.create({
         data: {
@@ -114,6 +129,7 @@ export class PrismaAnalysisRepository implements AnalysisRepository {
           engineOutput: jsonValue(output.raw),
           engine: output.engine,
           model: output.model,
+          requestedModel: this.selection?.model,
           rubricVersion: input.rubricVersion,
           dataMode: dataMode(),
           analysisDay: new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`),

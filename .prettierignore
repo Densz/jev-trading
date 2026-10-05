@@ -1,0 +1,13 @@
+node_modules
+.next
+.next-e2e
+src/generated
+prisma/migrations
+pnpm-lock.yaml
+next-env.d.ts
+AGENTS.md
+CLAUDE.md
+test-results
+playwright-report
+*.tsbuildinfo
+README.md

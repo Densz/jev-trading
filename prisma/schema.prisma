@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum TradingDecision {
+  BUY
+  HOLD
+  SELL
+}
+
+enum RunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model Ticker {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  name      String
+  exchange  String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  analyses  Analysis[]
+  runs      AnalysisRun[]
+}
+
+model Analysis {
+  id                 String          @id @default(cuid())
+  tickerId           String
+  ticker             Ticker          @relation(fields: [tickerId], references: [id])
+  runId              String          @unique
+  run                AnalysisRun     @relation(fields: [runId], references: [id])
+  decision           TradingDecision
+  confidence         Float
+  summary            String
+  bullishFactors     Json            @db.JsonB
+  bearishFactors     Json            @db.JsonB
+  risks              Json            @db.JsonB
+  marketDataSnapshot Json            @db.JsonB
+  newsSnapshot       Json            @db.JsonB
+  analysisInput      Json            @db.JsonB
+  engineOutput       Json            @db.JsonB
+  engine             String
+  model              String
+  rubricVersion      String
+  dataMode           String
+  analysisDay        DateTime        @db.Date
+  createdAt          DateTime        @default(now())
+  @@index([tickerId, dataMode, createdAt(sort: Desc)])
+  @@index([tickerId, dataMode, analysisDay])
+}
+
+model AnalysisRun {
+  id          String    @id @default(cuid())
+  tickerId    String
+  ticker      Ticker    @relation(fields: [tickerId], references: [id])
+  status      RunStatus @default(RUNNING)
+  stage       String
+  trigger     String
+  dataMode    String
+  errorCode   String?
+  errorMessage String?
+  warnings    Json      @default("[]") @db.JsonB
+  context     Json?     @db.JsonB
+  rawOutput   Json?     @db.JsonB
+  startedAt   DateTime  @default(now())
+  expiresAt   DateTime
+  finishedAt  DateTime?
+  analysis    Analysis?
+  usage       ApiUsage[]
+  @@index([tickerId, dataMode, startedAt(sort: Desc)])
+  @@index([status, expiresAt])
+}
+
+model ProviderCache {
+  key       String   @id
+  value     Json     @db.JsonB
+  fetchedAt DateTime @default(now())
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model ApiUsage {
+  id               String   @id @default(cuid())
+  runId            String?
+  run              AnalysisRun? @relation(fields: [runId], references: [id])
+  symbol           String
+  provider         String
+  operation        String
+  dataMode         String
+  cached           Boolean  @default(false)
+  success          Boolean
+  attempt          Int
+  durationMs       Int
+  inputTokens      Int?
+  outputTokens     Int?
+  estimatedCostUsd Float?
+  errorCode        String?
+  createdAt        DateTime @default(now())
+  @@index([dataMode, createdAt])
+  @@index([runId])
+  @@index([symbol, createdAt])
+}
+
+model RateLimitBucket {
+  key       String   @id
+  startedAt DateTime
+  count     Int
+}

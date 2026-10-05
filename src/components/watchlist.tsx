@@ -22,6 +22,7 @@ import { money, percent, relativeTime, cn } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { Confidence, DecisionBadge } from "./decision-badge";
+import { CoverageNotice } from "./financial-research";
 import { StatusMessage, useAnalysis } from "./analysis-actions";
 import { MobileTickers } from "./mobile-tickers";
 
@@ -51,7 +52,7 @@ export function Watchlist({
   config,
 }: {
   tickers: TickerView[];
-  config: { demo: boolean; horizon: string; missing: string[] };
+  config: { demo: boolean; horizon: string; missing: string[]; financialReportsEnabled: boolean };
 }) {
   const router = useRouter();
   const { busy, progress, message, analyze, setMessage } = useAnalysis();
@@ -169,6 +170,13 @@ export function Watchlist({
           </Button>
         </div>
       </div>
+      {!config.financialReportsEnabled && (
+        <div className="mb-5 rounded-lg border border-neutral-signal/20 bg-neutral-signal/5 px-4 py-3 text-xs leading-6 text-neutral-signal">
+          Official financial reports are not enabled. Set SEC_USER_AGENT to the application name and
+          a real contact email in .env, then restart the server. Until then, analyses have limited
+          financial coverage.
+        </div>
+      )}
       {config.missing.length > 0 && (
         <div className="panel mb-6 flex items-start gap-3 border-amber-500/25 p-4">
           <ShieldAlert className="mt-0.5 size-5 text-amber-500" />
@@ -352,7 +360,10 @@ export function Watchlist({
                         </td>
                         <td>
                           {t.latest ? (
-                            <DecisionBadge decision={t.latest.decision} />
+                            <div className="flex flex-col items-start gap-2">
+                              <DecisionBadge decision={t.latest.decision} />
+                              <CoverageNotice input={t.latest.input} compact />
+                            </div>
                           ) : (
                             <span className="text-[10px] text-muted-foreground">Not analyzed</span>
                           )}

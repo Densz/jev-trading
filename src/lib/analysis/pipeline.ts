@@ -10,6 +10,7 @@ import {
   type NewsProvider,
   type RunResult,
 } from "@/types/analysis";
+import type { FinancialReportsProvider } from "@/types/financials";
 
 export type Claim =
   | { status: "claimed"; runId: string; tickerId: string }
@@ -33,7 +34,12 @@ export class AnalysisPipeline {
     private providers: (
       symbol: string,
       runId: string,
-    ) => { market: MarketDataProvider; news: NewsProvider; engine: DecisionEngine },
+    ) => {
+      market: MarketDataProvider;
+      news: NewsProvider;
+      financials?: FinancialReportsProvider;
+      engine: DecisionEngine;
+    },
     private horizon: AnalysisInput["horizon"],
     private clock: () => Date = () => new Date(),
   ) {}
@@ -51,7 +57,7 @@ export class AnalysisPipeline {
     if (claim.status !== "claimed") return { symbol, ...claim };
     const { runId } = claim;
     try {
-      const { market, news, engine } = this.providers(symbol, runId);
+      const { market, news, financials, engine } = this.providers(symbol, runId);
       await this.repository.stage(runId, "market");
       const quote = await market.getQuote(symbol);
       if (now.getTime() - new Date(quote.asOf).getTime() > 7 * 86400000)
@@ -81,14 +87,24 @@ export class AnalysisPipeline {
       ]);
       await this.repository.stage(
         runId,
-        "normalization",
+        "financial-reports",
         { quote, history, fundamentals, articles },
+        warnings,
+      );
+      const financialReports = financials
+        ? await optional("Financial reports", () => financials.getReports(symbol))
+        : null;
+      await this.repository.stage(
+        runId,
+        "normalization",
+        { quote, history, fundamentals, articles, financialReports },
         warnings,
       );
       const input = buildAnalysisInput({
         quote,
         history,
         fundamentals,
+        financialReports,
         news: articles ?? [],
         warnings,
         horizon: this.horizon,

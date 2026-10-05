@@ -3,6 +3,8 @@ import { AnalysisPipeline, type AnalysisRepository, type Claim } from "@/lib/ana
 import type { AnalysisInput, EngineResult } from "@/types/analysis";
 import { AppError } from "@/lib/errors";
 import { article, history, now, quote, validOutput } from "./fixtures";
+import { normalizeCompanyFacts } from "@/lib/financials/normalize";
+import { companyFactsFixture, fixtureCik } from "./financial-fixtures";
 
 class MemoryRepository implements AnalysisRepository {
   active = false;
@@ -50,6 +52,9 @@ function setup() {
       })),
     },
     news: { getNews: vi.fn(async () => [article]) },
+    financials: {
+      getReports: vi.fn(async () => normalizeCompanyFacts(companyFactsFixture(), fixtureCik, now)),
+    },
     engine: { analyze: vi.fn(async () => validOutput) },
   };
   const pipeline = new AnalysisPipeline(
@@ -66,10 +71,14 @@ describe("analysis pipeline", () => {
     expect((await pipeline.analyzeTicker("AAPL")).status).toBe("succeeded");
     expect(repository.saved).toHaveLength(1);
     expect(providers.engine.analyze).toHaveBeenCalledWith(repository.saved[0]);
+    expect(repository.saved[0].version).toBe("2");
+    if (repository.saved[0].version === "2")
+      expect(repository.saved[0].financialReports?.quarterly).toHaveLength(8);
     expect(repository.stages).toEqual([
       "market",
       "enrichment",
       "news",
+      "financial-reports",
       "normalization",
       "decision",
       "validation",
@@ -109,6 +118,19 @@ describe("analysis pipeline", () => {
     expect(repository.saved[0].news).toEqual([]);
     expect(repository.saved[0].signals.movingAverage50).toBeNull();
     expect(repository.saved[0].warnings.join(" ")).toContain("TIMEOUT");
+  });
+  it("keeps a financial-provider failure explicit without inventing statements or financial confidence", async () => {
+    const { pipeline, providers, repository } = setup();
+    providers.financials.getReports.mockRejectedValue(
+      new AppError("CONFIGURATION", "SEC contact missing"),
+    );
+    expect((await pipeline.analyzeTicker("AAPL")).status).toBe("succeeded");
+    const context = repository.saved[0];
+    expect(context.warnings.join(" ")).toContain("CONFIGURATION");
+    if (context.version === "2") {
+      expect(context.financialReports).toBeNull();
+      expect(context.dataQuality.status).toBe("limited");
+    }
   });
   it("never saves a recommendation for market, engine, or validation failures", async () => {
     for (const failure of ["market", "engine", "validation"] as const) {

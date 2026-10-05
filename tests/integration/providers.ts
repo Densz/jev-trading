@@ -2,17 +2,25 @@ import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { testDatabaseUrl } from "../../scripts/test-database";
+import {
+  companyFactsFixture,
+  fixtureCik,
+  filingHtmlFixture,
+  submissionsFixture,
+} from "../financial-fixtures";
 
 process.env.DATABASE_URL = testDatabaseUrl();
 process.env.DEMO_MODE = "false";
 process.env.TYPESAFE_API_KEY = "integration-fixture-only";
 process.env.TWELVE_DATA_API_KEY = "integration-fixture-only";
 process.env.FINNHUB_API_KEY = "integration-fixture-only";
+process.env.SEC_USER_AGENT = "Thesis integration contact@example.com";
 
 const { db } = await import("../../src/db/client");
 const { ExternalGateway } = await import("../../src/server/external");
 const { TwelveDataMarketProvider } = await import("../../src/lib/market/twelve-data");
 const { FinnhubNewsProvider } = await import("../../src/lib/news/finnhub");
+const { SecFinancialReportsProvider } = await import("../../src/lib/financials/sec");
 const { JevDecisionEngine } = await import("../../src/lib/jev/analyze");
 const { AnalysisPipeline } = await import("../../src/lib/analysis/pipeline");
 const { PrismaAnalysisRepository } = await import("../../src/server/analysis-repository");
@@ -57,13 +65,35 @@ const transport: typeof fetch = async (request, options) => {
         headline: "Company reports stronger earnings",
         source: "Fixture filings",
         datetime: Math.floor(now.getTime() / 1000) - 3600,
-        url: "https://example.com/filing",
+        url: "https://finnhub.io/api/news?id=earnings-fixture",
         related: symbol,
         summary: "Revenue improved from the previous year.",
+      },
+      {
+        headline: "Regulator announces new export restrictions",
+        source: "Fixture regulator",
+        datetime: Math.floor(now.getTime() / 1000) - 7200,
+        url: "https://finnhub.io/api/news?id=regulation-fixture",
+        related: symbol,
+        summary: "A new restriction affects the company's product shipments.",
       },
     ]);
   if (url.pathname === "/api/v1/stock/metric")
     return json({ symbol, metric: { peTTM: 25, epsGrowthTTMYoy: 12, revenueGrowthTTMYoy: 10 } });
+  if (["www.sec.gov", "data.sec.gov"].includes(url.hostname)) {
+    assert.equal(
+      new Headers(options?.headers).get("User-Agent"),
+      "Thesis integration contact@example.com",
+    );
+    if (url.pathname === "/files/company_tickers.json")
+      return json({ "0": { cik_str: Number(fixtureCik), ticker: symbol } });
+    if (url.pathname.startsWith("/api/xbrl/companyfacts/")) return json(companyFactsFixture());
+    if (url.pathname.startsWith("/submissions/")) return json(submissionsFixture);
+    if (url.pathname.endsWith("index.json"))
+      return json({ directory: { item: [{ name: "ex99-1.htm" }] } });
+    if (url.pathname.endsWith(".htm"))
+      return new Response(filingHtmlFixture, { headers: { "Content-Type": "text/html" } });
+  }
   if (url.pathname === "/v1/systemone") {
     assert.equal(
       new Headers(options?.headers).get("authorization"),
@@ -98,6 +128,8 @@ const transport: typeof fetch = async (request, options) => {
   throw new Error(`Unexpected external endpoint: ${url.origin}${url.pathname}`);
 };
 try {
+  // The fixture issuer index varies by run; invalidate only that fixture cache in the isolated test DB.
+  await db.providerCache.deleteMany({ where: { key: "live:sec:tickers:v1" } });
   await db.ticker.create({
     data: { symbol, name: "Integration Test Company", exchange: "NASDAQ" },
   });
@@ -108,6 +140,7 @@ try {
       return {
         market: new TwelveDataMarketProvider(gateway),
         news: new FinnhubNewsProvider(gateway),
+        financials: new SecFinancialReportsProvider(gateway),
         engine: new JevDecisionEngine(gateway),
       };
     },
@@ -130,6 +163,23 @@ try {
   assert.equal((await pipeline.analyzeTicker(symbol, { force: true })).status, "failed");
   const saved = await db.analysis.findMany({ where: { ticker: { symbol } } });
   assert.equal(saved.length, 2, "Failed engine calls must never save a recommendation");
+  const snapshotInput = saved[0].analysisInput as {
+    version: string;
+    financialReports: { quarterly: unknown[]; annual: unknown[]; excerpts: unknown[] };
+    dataQuality: { status: string };
+    news: { url: string }[];
+  };
+  assert.equal(snapshotInput.version, "2");
+  assert.equal(snapshotInput.financialReports.quarterly.length, 8);
+  assert.equal(snapshotInput.financialReports.annual.length, 3);
+  assert.ok(snapshotInput.financialReports.excerpts.length > 0);
+  assert.equal(
+    snapshotInput.news.filter((article) =>
+      article.url.startsWith("https://finnhub.io/api/news?id="),
+    ).length,
+    2,
+    "Distinct Finnhub article IDs must survive the full pipeline",
+  );
   assert.ok(Math.abs(saved[0].confidence - 0.7) < 1e-12);
   const snapshot = saved[0].marketDataSnapshot as { history: { points: unknown[] } };
   assert.equal(
@@ -140,6 +190,10 @@ try {
   assert.ok(
     !JSON.stringify(saved[0].analysisInput).includes("integration-fixture-only"),
     "API keys must never enter the normalized context",
+  );
+  assert.ok(
+    !JSON.stringify(saved[0].analysisInput).includes("contact@example.com"),
+    "The SEC contact remains server-side",
   );
   const runs = await db.analysisRun.findMany({
     where: { ticker: { symbol } },
@@ -152,7 +206,7 @@ try {
   assert.equal(runs[3].errorCode, "MALFORMED_RESPONSE");
   assert.ok(runs[3].rawOutput, "Malformed engine output should remain inspectable");
   const usage = await db.apiUsage.findMany({ where: { symbol } });
-  assert.equal(usage.filter((u) => u.cached).length, 12);
+  assert.equal(usage.filter((u) => u.cached).length, 15);
   assert.equal(usage.filter((u) => u.provider === "jev" && u.inputTokens === 1000).length, 3);
   assert.ok(usage.some((u) => u.provider === "twelvedata" && !u.success && u.attempt === 1));
   assert.ok(

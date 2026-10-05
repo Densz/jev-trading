@@ -7,6 +7,8 @@ import type {
   TradingDecision,
 } from "@/types/analysis";
 import { AppError } from "@/lib/errors";
+import type { FinancialReportsProvider } from "@/types/financials";
+import { normalizeCompanyFacts } from "@/lib/financials/normalize";
 
 export const demoCompanies: Record<
   string,
@@ -142,5 +144,93 @@ export class DemoDecisionEngine implements DecisionEngine {
         ],
       },
     };
+  }
+}
+export class DemoFinancialReportsProvider implements FinancialReportsProvider {
+  async getReports(symbol: string) {
+    const value = company(symbol);
+    const now = new Date();
+    const anchor = new Date(
+      Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3 - 3, 0),
+    );
+    const facts: Record<string, { units: Record<string, unknown[]> }> = {};
+    const add = (
+      concept: string,
+      unit: string,
+      start: string | undefined,
+      end: string,
+      amount: number,
+      index: number,
+      form: string,
+    ) => {
+      const key = `0000000000-26-${String(index + 1).padStart(6, "0")}`;
+      const filed = new Date(Date.parse(end) + 30 * 86400000).toISOString().slice(0, 10);
+      const entry = (facts[concept] ??= { units: {} });
+      (entry.units[unit] ??= []).push({ start, end, val: amount, accn: key, filed, form });
+    };
+    const emit = (start: string, end: string, revenue: number, index: number, form: string) => {
+      for (const [concept, amount] of Object.entries({
+        RevenueFromContractWithCustomerExcludingAssessedTax: revenue,
+        GrossProfit: revenue * 0.55,
+        OperatingIncomeLoss: revenue * 0.3,
+        NetIncomeLoss: revenue * 0.22,
+        NetCashProvidedByUsedInOperatingActivities: revenue * 0.25,
+        PaymentsToAcquirePropertyPlantAndEquipment: revenue * 0.04,
+      }))
+        add(concept, "USD", start, end, amount, index, form);
+      add("EarningsPerShareDiluted", "USD/shares", start, end, revenue / 1e10, index, form);
+      add(
+        "CashAndCashEquivalentsAtCarryingValue",
+        "USD",
+        undefined,
+        end,
+        revenue * 1.4,
+        index,
+        form,
+      );
+    };
+    for (let index = 0; index < 12; index++) {
+      const end = new Date(
+        Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1 - index * 3, 0),
+      );
+      const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 2, 1));
+      emit(
+        start.toISOString().slice(0, 10),
+        end.toISOString().slice(0, 10),
+        (25 - index * (value.decision === "SELL" ? -0.4 : 0.5)) * 1e9,
+        index,
+        "10-Q",
+      );
+    }
+    for (let index = 0; index < 4; index++) {
+      const year = now.getUTCFullYear() - 1 - index;
+      emit(`${year}-01-01`, `${year}-12-31`, (96 - index * 8) * 1e9, index + 20, "10-K");
+    }
+    const reports = normalizeCompanyFacts(
+      { cik: 0, facts: { "us-gaap": facts } },
+      "0000000000",
+      now,
+    );
+    reports.provider = "Synthetic demo";
+    reports.sources = reports.sources.map((source) => ({
+      ...source,
+      url: `https://example.com/synthetic/${symbol}/${source.id}`,
+    }));
+    const sourceId = reports.sources[0].id;
+    reports.excerpts = [
+      {
+        category: "outlook",
+        sourceId,
+        text: "[Synthetic] Management expects demand to remain resilient, while acknowledging that forecasts are uncertain. This is not an actual issuer statement.",
+        truncated: false,
+      },
+      {
+        category: "risks",
+        sourceId,
+        text: "[Synthetic] Export restrictions, customer concentration, and elevated investment commitments could affect future results. This is not a real filing.",
+        truncated: false,
+      },
+    ];
+    return reports;
   }
 }

@@ -11,6 +11,7 @@ const schema = z.object({
   TYPESAFE_API_KEY: optionalSecret,
   TWELVE_DATA_API_KEY: optionalSecret,
   FINNHUB_API_KEY: optionalSecret,
+  SEC_USER_AGENT: optionalSecret,
   TYPESAFE_MODEL: z.string().default("jev-1.13.0"),
   DEMO_MODE: z
     .enum(["true", "false"])

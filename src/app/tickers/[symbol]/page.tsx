@@ -19,6 +19,7 @@ import { DecisionBadge } from "@/components/decision-badge";
 import { HistoryChart } from "@/components/history-chart";
 import { TickerAnalyze } from "@/components/analysis-actions";
 import { RunPolling } from "@/components/run-polling";
+import { CoverageNotice, FinancialResearch } from "@/components/financial-research";
 import type { Metadata } from "next";
 
 export async function generateMetadata({
@@ -168,6 +169,8 @@ export default async function TickerPage({
               · {selected.model} · {selected.input.rubricVersion}
             </p>
           </section>
+          <CoverageNotice input={selected.input} />
+          <FinancialResearch input={selected.input} />
           <div className="mb-5 grid items-start gap-4 xl:grid-cols-3">
             {[
               {
@@ -260,7 +263,10 @@ export default async function TickerPage({
                     "Trailing P/E",
                     selected.input.fundamentals?.peRatio?.toFixed(1) ?? "Unavailable",
                   ],
-                  ["Recent articles", `${selected.input.news.length} / 8 maximum`],
+                  [
+                    "Recent articles",
+                    `${selected.input.news.length} / ${selected.input.version === "2" ? 12 : 8} maximum`,
+                  ],
                 ].map(([key, value]) => (
                   <div key={key} className="flex justify-between gap-3">
                     <dt className="text-muted-foreground">{key}</dt>
@@ -306,6 +312,13 @@ export default async function TickerPage({
                         {n.source} ·{" "}
                         {new Date(n.publishedAt).toLocaleString("en-US", { timeZone: "UTC" })} UTC
                       </p>
+                      {n.relatedSources?.length ? (
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          Also covered by{" "}
+                          {n.relatedSources.map((source) => source.source).join(", ")}. Additional
+                          URLs are retained in the analysis input.
+                        </p>
+                      ) : null}
                     </div>
                     <ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground" />
                   </a>
@@ -338,7 +351,7 @@ export default async function TickerPage({
           </p>
         </div>
       )}
-      <section className="panel mb-5 overflow-hidden">
+      <section className="panel mb-5 overflow-hidden" aria-label="Saved analysis history">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-sm font-medium">Saved analysis history</h2>
           <span className="text-[10px] text-muted-foreground">Newest first · UTC</span>

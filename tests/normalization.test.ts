@@ -82,7 +82,7 @@ describe("news and context normalization", () => {
       })),
     ];
     const result = normalizeNews(articles, now);
-    expect(result).toHaveLength(8);
+    expect(result).toHaveLength(12);
     expect(result.filter((a) => a.title.startsWith("Apple"))).toHaveLength(1);
     expect(result.some((a) => ["Old", "Future"].includes(a.title))).toBe(false);
   });
@@ -106,6 +106,51 @@ describe("news and context normalization", () => {
     );
     expect(result).toHaveLength(1);
     expect(result[0].publishedAt).toBe(now.toISOString());
+  });
+  it("preserves Finnhub article identity, removes only tracking parameters, and retains grouped sources", () => {
+    const result = normalizeNews(
+      [
+        { ...article, url: "https://finnhub.io/api/news?id=A&utm_source=feed" },
+        {
+          ...article,
+          title: "New export regulation impacts product shipments",
+          url: "https://finnhub.io/api/news?id=B",
+        },
+        { ...article, source: "Second publisher", url: "https://another.example/earnings" },
+      ],
+      now,
+    );
+    expect(result).toHaveLength(2);
+    expect(result[0].relatedSources).toEqual([
+      { source: "Second publisher", url: "https://another.example/earnings" },
+    ]);
+    expect(result.some((entry) => entry.url.includes("id=B"))).toBe(true);
+  });
+  it("uses a thirty-day window and prioritizes material events over newer market opinions", () => {
+    const result = normalizeNews(
+      [
+        {
+          ...article,
+          title: "Stocks just hit record highs and look cheap",
+          url: "https://example.com/opinion",
+          publishedAt: now.toISOString(),
+        },
+        {
+          ...article,
+          title: "Issuer announces revised guidance",
+          url: "https://example.com/guidance",
+          publishedAt: "2026-09-15T12:00:00Z",
+        },
+      ],
+      now,
+    );
+    expect(result.map((entry) => entry.url)).toEqual([
+      "https://example.com/guidance",
+      "https://example.com/opinion",
+    ]);
+  });
+  it("does not use an opening-session quote volume as a full-session volume ratio", () => {
+    expect(computeSignals(history, { ...quote, volume: 1 }).volumeRatio).toBe(1.25);
   });
   it("makes unavailable data explicit and distinguishes trends from fundamentals", () => {
     const result = buildAnalysisInput({

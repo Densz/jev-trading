@@ -64,12 +64,32 @@ export default function MethodologyPage() {
         <div>
           <h2 className="text-sm font-medium">Data boundaries</h2>
           <p className="mt-2 text-xs leading-6 text-muted-foreground">
-            V1 uses the latest available quote, roughly 65 daily price bars, basic trailing company
-            metrics, and at most eight recent, deduplicated company-news articles. Price momentum is
-            not treated as proof of fundamental improvement. Data may be delayed, news summaries may
-            omit context, and reported metrics do not verify forward analyst revisions or
-            fiscal-period freshness. Missing optional data is made visible. A failed decision-engine
-            call produces no recommendation.
+            V2 adds up to eight quarterly periods, three annual periods, and two six-month
+            cumulative periods from standard SEC company-level XBRL facts. Fiscal dates, currencies,
+            filing sources, and calculation provenance are preserved. Ratios and comparable
+            year-over-year changes are calculated in code. Quarterly flows may be derived from
+            cumulative reports; diluted EPS is never derived by subtraction. Custom segment data and
+            non-GAAP adjustments are not automatically normalized. Keyword-selected official
+            excerpts provide source passages, not a comprehensive report review or an independently
+            verified forecast. Up to twelve company-news events from the last thirty days are
+            selected, with identity parameters preserved and syndicated coverage grouped. Headlines
+            and publisher summaries are not full articles. Price momentum is not proof of
+            fundamental improvement, and analyst consensus, earnings surprises, and forward
+            revisions are not verified. Missing optional data remains visible. A failed
+            decision-engine call produces no recommendation.
+          </p>
+        </div>
+        <div>
+          <h2 className="text-sm font-medium">Coverage is not model confidence</h2>
+          <p className="mt-2 text-xs leading-6 text-muted-foreground">
+            The baseline is covered only when at least four quarterly and two annual periods are
+            available, the latest period is no more than 150 days old with revenue, diluted EPS and
+            operating cash flow, at least three potentially material news events from two publishers
+            (excluding market opinions and uncategorized stories), and an official outlook excerpt.
+            Otherwise coverage is partial or limited and classifications are labeled provisional.
+            This operational checklist is not a statistical quality score, a guarantee of
+            completeness, or a return prediction. Annual-only and foreign reporting may therefore
+            remain partial even when valid reports exist.
           </p>
         </div>
         <div>

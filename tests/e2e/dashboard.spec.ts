@@ -76,8 +76,15 @@ test("complete research workflow persists analyses and preserves disabled ticker
   await expect(page.getByRole("heading", { name: "AAPL", exact: true })).toBeVisible();
   await expect(page.getByText("82", { exact: false }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Bullish factors" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Financial statements", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Data coverage", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Official filing excerpts", exact: true }),
+  ).toBeVisible();
   await page.getByText("Inspect normalized input & engine output").click();
-  await expect(page.getByText('"rubricVersion": "thesis-v1"', { exact: false })).toBeVisible();
+  await expect(page.getByText('"rubricVersion": "thesis-v2"', { exact: false })).toBeVisible();
   await page.getByText("Inspect normalized input & engine output").click();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: "/private/tmp/jev-ticker-detail.png", fullPage: true });
@@ -86,7 +93,9 @@ test("complete research workflow persists analyses and preserves disabled ticker
   await expect(page.getByText("AAPL analysis saved.")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Saved analysis history" })).toBeVisible();
-  await expect(page.getByRole("row")).toHaveCount(3);
+  await expect(
+    page.getByRole("region", { name: "Saved analysis history" }).getByRole("row"),
+  ).toHaveCount(3);
   await page.getByRole("link", { name: "Back to watchlist" }).click();
   await page.getByRole("button", { name: "Disable AAPL", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Disable ticker" }).click();
@@ -107,6 +116,61 @@ test("complete research workflow persists analyses and preserves disabled ticker
     true,
   );
   expect(errors).toEqual([]);
+});
+
+test("financial research stays readable on mobile and legacy snapshots remain immutable", async ({
+  page,
+  request,
+}) => {
+  await request.post("/api/tickers", { data: { symbol: "NVDA" } });
+  await request.post("/api/tickers/NVDA/analyze", { data: {} });
+  await page.goto("/tickers/NVDA");
+  await expect(
+    page.getByRole("heading", { name: "Financial statements", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Quarterly results", { exact: false }).first()).toContainText(
+    "8 periods",
+  );
+  await page.locator("summary").filter({ hasText: "Annual results" }).click();
+  await expect(page.getByText("Annual results", { exact: false }).first()).toContainText(
+    "3 periods",
+  );
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({
+    path: "/private/tmp/jev-financial-research-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({ path: "/private/tmp/jev-financial-research-mobile.png", fullPage: true });
+  const client = new Client({ connectionString: testDatabaseUrl() });
+  let id: string;
+  try {
+    await client.connect();
+    const row = (await client.query('SELECT id, "analysisInput" FROM "Analysis" LIMIT 1')).rows[0];
+    id = row.id;
+    const legacy = { ...row.analysisInput, version: "1", rubricVersion: "thesis-v1" };
+    delete legacy.financialReports;
+    delete legacy.dataQuality;
+    delete legacy.newsEvents;
+    await client.query(
+      'UPDATE "Analysis" SET "analysisInput" = $1::jsonb, "rubricVersion" = $2 WHERE id = $3',
+      [JSON.stringify(legacy), "thesis-v1", id],
+    );
+  } finally {
+    await client.end();
+  }
+  await page.goto(`/tickers/NVDA?analysis=${id!}`);
+  await expect(
+    page
+      .getByRole("region", { name: "Data coverage" })
+      .getByText("Legacy V1 analysis:", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Financial statements", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("daily deduplication and concurrent requests use actual PostgreSQL locks", async ({

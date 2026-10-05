@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { dataQualitySchema, financialReportsSchema } from "./financials";
 
 export const symbolSchema = z
   .string()
@@ -49,11 +50,14 @@ export const newsSchema = z.object({
   source: z.string().min(1).max(100),
   publishedAt: z.iso.datetime(),
   url: z.url().refine((url) => /^https?:\/\//.test(url)),
-  summary: z.string().max(800).optional(),
+  summary: z.string().max(1000).optional(),
+  sourceType: z.enum(["media", "issuer-filing"]).optional(),
+  relatedSources: z
+    .array(z.object({ source: z.string().max(100), url: z.url() }))
+    .max(4)
+    .optional(),
 });
-export const analysisInputSchema = z.object({
-  version: z.literal("1"),
-  rubricVersion: z.literal("thesis-v1"),
+const analysisBaseSchema = z.object({
   ticker: z.object({
     symbol: symbolSchema,
     name: z.string().min(1).max(200),
@@ -69,9 +73,11 @@ export const analysisInputSchema = z.object({
     movingAverage50: finite.nullable(),
     annualizedVolatilityPercent: finite.nullable(),
     volumeRatio: finite.nullable(),
+    volumeRatioBasis: z.enum(["completed-session", "unavailable"]).optional(),
+    volumeRatioSessionDate: z.iso.date().nullable().optional(),
   }),
   fundamentals: fundamentalsSchema.nullable(),
-  news: z.array(newsSchema).max(8),
+  news: z.array(newsSchema).max(12),
   warnings: z.array(z.string().max(500)).max(20),
   evidence: z
     .array(
@@ -79,10 +85,30 @@ export const analysisInputSchema = z.object({
         id: z.string(),
         text: z.string().max(500),
         kind: z.enum(["bullish", "bearish", "risk"]),
+        sourceRefs: z.array(z.string()).max(4).optional(),
       }),
     )
-    .max(20),
+    .max(24),
 });
+export const newsEventSchema = z.object({
+  id: z.string(),
+  category: z.enum(["earnings", "guidance", "regulation", "business", "opinion", "other"]),
+  title: z.string().max(300),
+  reportedAt: z.iso.datetime(),
+  sourceUrls: z.array(z.url()).max(5),
+  evidenceType: z.enum(["publisher-summary", "issuer-statement"]),
+});
+export const analysisInputV2Schema = analysisBaseSchema.extend({
+  version: z.literal("2"),
+  rubricVersion: z.literal("thesis-v2"),
+  financialReports: financialReportsSchema.nullable(),
+  newsEvents: z.array(newsEventSchema).max(12),
+  dataQuality: dataQualitySchema,
+});
+export const analysisInputSchema = z.discriminatedUnion("version", [
+  analysisBaseSchema.extend({ version: z.literal("1"), rubricVersion: z.literal("thesis-v1") }),
+  analysisInputV2Schema,
+]);
 export const decisionSchema = z
   .object({
     decision: z.enum(["BUY", "HOLD", "SELL"]),
@@ -99,6 +125,7 @@ export type MarketHistory = z.infer<typeof historySchema>;
 export type Fundamentals = z.infer<typeof fundamentalsSchema>;
 export type NewsArticle = z.infer<typeof newsSchema>;
 export type AnalysisInput = z.infer<typeof analysisInputSchema>;
+export type AnalysisInputV2 = Extract<AnalysisInput, { version: "2" }>;
 export type AnalysisDecision = z.infer<typeof decisionSchema>;
 export interface EngineResult {
   decision: AnalysisDecision;

@@ -1,7 +1,6 @@
 import "server-only";
 import { z } from "zod";
 import { newsSchema, type NewsProvider } from "@/types/analysis";
-import { normalizeNews } from "@/lib/analysis/normalize";
 import { ExternalGateway } from "@/server/external";
 import { requireKey } from "@/server/env";
 import { AppError } from "@/lib/errors";
@@ -26,7 +25,8 @@ export function normalizeFinnhubNews(raw: unknown, now = new Date(), symbol?: st
       source: value.source.slice(0, 100),
       publishedAt: new Date(value.datetime * 1000).toISOString(),
       url: value.url,
-      summary: value.summary?.slice(0, 800),
+      summary: value.summary?.slice(0, 1000),
+      sourceType: "media",
     });
     if (!article.success) return [];
     validRecords++;
@@ -46,18 +46,20 @@ export function normalizeFinnhubNews(raw: unknown, now = new Date(), symbol?: st
       "MALFORMED_RESPONSE",
       "The news provider returned no valid article records.",
     );
-  return normalizeNews(articles, now);
+  return articles
+    .filter((article) => new Date(article.publishedAt).getTime() <= now.getTime() + 300000)
+    .slice(0, 300);
 }
 export class FinnhubNewsProvider implements NewsProvider {
   constructor(private gateway: ExternalGateway) {}
   getNews(symbol: string) {
-    return this.gateway.cached(`news:${symbol}`, 30 * 60000, "finnhub", "news", async () => {
+    return this.gateway.cached(`news:v2:${symbol}`, 30 * 60000, "finnhub", "news", async () => {
       const now = new Date();
       const url = new URL("https://finnhub.io/api/v1/company-news");
       url.searchParams.set("symbol", symbol);
       url.searchParams.set(
         "from",
-        new Date(now.getTime() - 7 * 86400000).toISOString().slice(0, 10),
+        new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10),
       );
       url.searchParams.set("to", now.toISOString().slice(0, 10));
       return normalizeFinnhubNews(

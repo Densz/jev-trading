@@ -105,6 +105,9 @@ export class PrismaAnalysisRepository implements AnalysisRepository {
             signals: input.signals,
             fundamentals: input.fundamentals,
             history: history ?? null,
+            ...(input.version === "2"
+              ? { financialReports: input.financialReports, dataQuality: input.dataQuality }
+              : {}),
           }),
           newsSnapshot: jsonValue(input.news),
           analysisInput: jsonValue(input),

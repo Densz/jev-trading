@@ -214,6 +214,8 @@ export function publicConfiguration() {
   return {
     demo: env.DEMO_MODE,
     horizon: env.INVESTMENT_HORIZON,
+    financialReportsEnabled:
+      env.DEMO_MODE || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(env.SEC_USER_AGENT ?? ""),
     missing: env.DEMO_MODE
       ? []
       : (["TWELVE_DATA_API_KEY", "FINNHUB_API_KEY", "TYPESAFE_API_KEY"] as const).filter(

@@ -5,6 +5,7 @@ import type { TickerView } from "@/server/queries";
 import { cn, money, percent, relativeTime } from "@/lib/utils";
 import { Confidence, DecisionBadge } from "./decision-badge";
 import { Button } from "./ui/button";
+import { CoverageNotice } from "./financial-research";
 
 export function MobileTickers({
   tickers,
@@ -62,6 +63,9 @@ export function MobileTickers({
           </div>
           {t.latest && (
             <>
+              <div className="mt-2">
+                <CoverageNotice input={t.latest.input} compact />
+              </div>
               <p className="mt-3 line-clamp-3 text-xs leading-6 text-muted-foreground">
                 {t.latest.summary}
               </p>

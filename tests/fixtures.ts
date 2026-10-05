@@ -1,5 +1,5 @@
 import type {
-  AnalysisInput,
+  AnalysisInputV2,
   EngineResult,
   MarketHistory,
   MarketQuote,
@@ -40,7 +40,7 @@ export const article: NewsArticle = {
   url: "https://example.com/earnings",
   summary: "Revenue increased year over year.",
 };
-export function input(overrides: Partial<AnalysisInput> = {}): AnalysisInput {
+export function input(overrides: Partial<AnalysisInputV2> = {}): AnalysisInputV2 {
   return {
     ...buildAnalysisInput({
       quote,

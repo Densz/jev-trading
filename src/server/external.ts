@@ -107,6 +107,7 @@ export class ExternalGateway {
     operation: string,
     url: URL,
     headers?: Record<string, string>,
+    options: { responseType?: "json" | "text"; maxBytes?: number } = {},
   ): Promise<unknown> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       await this.reserve(provider);
@@ -117,6 +118,7 @@ export class ExternalGateway {
           headers,
           cache: "no-store",
           signal: AbortSignal.timeout(15000),
+          redirect: provider === "sec" ? "error" : "follow",
         });
         const retryHeader = response.headers.get("retry-after");
         if (retryHeader)
@@ -150,7 +152,7 @@ export class ExternalGateway {
           const chunk = await reader.read();
           if (chunk.done) break;
           size += chunk.value.byteLength;
-          if (size > 2_000_000) {
+          if (size > (options.maxBytes ?? 2_000_000)) {
             await reader.cancel();
             throw new AppError(
               "RESPONSE_TOO_LARGE",
@@ -161,7 +163,8 @@ export class ExternalGateway {
         }
         let body: unknown;
         try {
-          body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          const text = Buffer.concat(chunks).toString("utf8");
+          body = options.responseType === "text" ? text : JSON.parse(text);
         } catch {
           throw new AppError("MALFORMED_RESPONSE", "The provider returned invalid JSON.");
         }

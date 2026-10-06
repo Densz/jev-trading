@@ -20,7 +20,9 @@ pnpm dev
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000).
 PostgreSQL binds only to localhost on port **5434** to avoid conflicting with other local database installations.
 The development server also binds only to localhost.
-Prisma migrations are checked in; client generation runs on install and build.
+Prisma migrations are checked in; client generation runs on install, development server startup, and build.
+After switching branches or changing the Prisma schema, apply the checked-in migrations with `pnpm prisma migrate deploy`, then restart the development server with `pnpm dev`.
+Restarting also clears any Prisma instance cached by the previous server process.
 The database volume preserves tickers, runs, usage, and analysis history across container restarts.
 
 For live research, populate `.env` with Twelve Data and Finnhub API keys, then configure an AI provider below. Jev can also use `TYPESAFE_API_KEY` from `.env`.

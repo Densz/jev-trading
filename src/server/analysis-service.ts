@@ -8,6 +8,8 @@ export function analysisService() {
     new PrismaAnalysisRepository(),
     createProviders,
     getEnv().INVESTMENT_HORIZON,
+    undefined,
+    getEnv().X_DEFAULT_TWEET_LIMIT,
   );
 }
 export const analyzeAllEnabledTickers = () =>

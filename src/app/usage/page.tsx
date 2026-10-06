@@ -39,7 +39,10 @@ export default async function UsagePage() {
         </p>
         <p className="mt-1">
           Jev estimate: ${getEnv().JEV_INPUT_USD_PER_MILLION} per million reported input tokens;
-          output tokens are free. Market/news calls have zero estimated variable cost on the
+          output tokens are free. X estimate: ${getEnv().X_POST_READ_COST_USD} per returned post,
+          before relevance filtering, and ${getEnv().X_PROFILE_READ_COST_USD} per returned author
+          profile. Cached profiles incur no new X read. Repeated billable resources may be
+          deduplicated by X. Other market/news calls have zero estimated variable cost on the
           selected free plans. Subscriptions, hosting, and unreported timeout billing are excluded.
         </p>
         {usage.unknownCosts > 0 && (

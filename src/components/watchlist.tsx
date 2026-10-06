@@ -25,6 +25,8 @@ import { Confidence, DecisionBadge } from "./decision-badge";
 import { CoverageNotice } from "./financial-research";
 import { StatusMessage, useAnalysis } from "./analysis-actions";
 import { MobileTickers } from "./mobile-tickers";
+import { AnalysisDialog } from "./analysis-dialog";
+import type { SocialConfiguration } from "@/types/social";
 
 const colors: Record<string, string> = {
   AAPL: "bg-slate-500/15 text-slate-400",
@@ -52,7 +54,11 @@ export function Watchlist({
   config,
 }: {
   tickers: TickerView[];
-  config: { demo: boolean; horizon: string; missing: string[]; financialReportsEnabled: boolean };
+  config: SocialConfiguration & {
+    horizon: string;
+    missing: string[];
+    financialReportsEnabled: boolean;
+  };
 }) {
   const router = useRouter();
   const { busy, progress, message, analyze, setMessage } = useAnalysis();
@@ -65,7 +71,9 @@ export function Watchlist({
   const [addError, setAddError] = useState("");
   const [disable, setDisable] = useState<TickerView | null>(null);
   const [changing, setChanging] = useState(false);
-  const [reAnalyze, setReAnalyze] = useState<string | null>(null);
+  const [analysisTarget, setAnalysisTarget] = useState<{ symbol?: string; force: boolean } | null>(
+    null,
+  );
   const enabled = tickers.filter((t) => t.enabled);
   const disabled = tickers.filter((t) => !t.enabled);
   const analyzed = enabled.filter((t) => t.latest);
@@ -162,7 +170,7 @@ export function Watchlist({
             Add ticker
           </Button>
           <Button
-            onClick={() => void analyze()}
+            onClick={() => setAnalysisTarget({ force: false })}
             disabled={!enabled.length || !!busy || running || config.missing.length > 0}
           >
             {busy === "all" ? <Loader2 className="animate-spin" /> : <Sparkles />}
@@ -305,7 +313,7 @@ export function Watchlist({
                 busy={busy}
                 blocked={!!busy || running || config.missing.length > 0}
                 changing={changing}
-                onAnalyze={(t) => (t.latest ? setReAnalyze(t.symbol) : void analyze(t.symbol))}
+                onAnalyze={(t) => setAnalysisTarget({ symbol: t.symbol, force: !!t.latest })}
                 onDisable={setDisable}
                 onEnable={(t) => void toggle(t)}
               />
@@ -407,7 +415,7 @@ export function Watchlist({
                                   aria-label={`Analyze ${t.symbol}`}
                                   disabled={!!busy || running || config.missing.length > 0}
                                   onClick={() =>
-                                    t.latest ? setReAnalyze(t.symbol) : void analyze(t.symbol)
+                                    setAnalysisTarget({ symbol: t.symbol, force: !!t.latest })
                                   }
                                 >
                                   {busy === t.symbol ? (
@@ -666,34 +674,23 @@ export function Watchlist({
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog
-        open={!!reAnalyze}
-        onOpenChange={(open) => {
-          if (!open) setReAnalyze(null);
-        }}
-      >
-        <DialogContent>
-          <DialogTitle>Re-analyze {reAnalyze}?</DialogTitle>
-          <DialogDescription>
-            This saves a new analysis even if one exists today. Cached data may be reused, and live
-            mode can incur another Jev API charge.
-          </DialogDescription>
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setReAnalyze(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                const value = reAnalyze;
-                setReAnalyze(null);
-                if (value) void analyze(value, true);
-              }}
-            >
-              Re-analyze
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {analysisTarget && (
+        <AnalysisDialog
+          {...analysisTarget}
+          tickerCount={enabled.length}
+          config={config}
+          onClose={() => setAnalysisTarget(null)}
+          onAnalyze={(tweetLimit, includeAuthorProfiles) => {
+            setAnalysisTarget(null);
+            void analyze(
+              analysisTarget.symbol,
+              analysisTarget.force,
+              tweetLimit,
+              includeAuthorProfiles,
+            );
+          }}
+        />
+      )}
     </>
   );
 }

@@ -34,11 +34,156 @@ test("individual browser analysis works on the loopback IP without APP_ORIGIN", 
       response.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Analyze NVDA", exact: true }).click();
+  await expect(page.getByLabel("Maximum X posts per company")).toHaveValue("10");
+  await expect(page.getByLabel("Look up new author profiles")).not.toBeChecked();
+  await page.getByRole("dialog").getByRole("button", { name: "Analyze", exact: true }).click();
   const response = await responsePromise;
   expect(await response.request().headerValue("origin")).toBe("http://127.0.0.1:3100");
   expect(response.status()).toBe(200);
+  expect(response.request().postDataJSON()).toEqual({ force: false, tweetLimit: 10 });
   await expect(page.getByText("NVDA analysis saved.")).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "NVDA" })).toContainText("HOLD");
+});
+
+test("X limits can change for each individual or batch analysis, with explicit opt-out", async ({
+  page,
+  request,
+}) => {
+  await request.post("/api/tickers", { data: { symbol: "AAPL" } });
+  await request.post("/api/tickers", { data: { symbol: "MSFT" } });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Analyze all", exact: true }).click();
+  await expect(page.getByLabel("Maximum X posts per company")).toHaveValue("10");
+  await page.getByLabel("Maximum X posts per company").fill("20");
+  const batchResponse = page.waitForResponse((response) => response.url().endsWith("/api/analyze"));
+  await page.getByRole("dialog").getByRole("button", { name: "Analyze all", exact: true }).click();
+  expect((await batchResponse).request().postDataJSON()).toEqual({ force: false, tweetLimit: 20 });
+  await expect(page.getByText("2 analyses saved.")).toBeVisible();
+  await page.goto("/tickers/AAPL");
+  await expect(page.getByRole("region", { name: "X discussion", exact: true })).toContainText(
+    "limit requested for this analysis: 20",
+  );
+  await page.getByRole("button", { name: "Re-analyze", exact: true }).click();
+  await expect(page.getByLabel("Maximum X posts per company")).toHaveValue("10");
+  await page.getByLabel("Maximum X posts per company").fill("15");
+  await page.screenshot({ path: "/private/tmp/jev-x-analysis-dialog-dark.png" });
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Toggle color theme" }).click();
+  await page.getByRole("button", { name: "Re-analyze", exact: true }).click();
+  await page.getByLabel("Maximum X posts per company").fill("15");
+  await page.screenshot({ path: "/private/tmp/jev-x-analysis-dialog-light.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "/private/tmp/jev-x-analysis-dialog-mobile.png" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await expect(
+    page.getByRole("dialog").getByRole("button", { name: "Re-analyze", exact: true }),
+  ).toBeInViewport();
+  await page.getByRole("dialog").getByRole("button", { name: "Re-analyze", exact: true }).click();
+  await expect(page.getByText("AAPL analysis saved.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "X discussion", exact: true })).toContainText(
+    "limit requested for this analysis: 15",
+  );
+  await page.getByRole("button", { name: "Re-analyze", exact: true }).click();
+  await page.getByLabel("Include X posts").uncheck();
+  const individualResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/tickers/AAPL/analyze"),
+  );
+  await page.getByRole("dialog").getByRole("button", { name: "Re-analyze", exact: true }).click();
+  expect((await individualResponse).request().postDataJSON()).toEqual({
+    force: true,
+    tweetLimit: 0,
+  });
+  await expect(page.getByRole("region", { name: "X discussion", exact: true })).toContainText(
+    "X was disabled for this analysis",
+  );
+  const client = new Client({ connectionString: testDatabaseUrl() });
+  try {
+    await client.connect();
+    const saved = await client.query(
+      'SELECT "analysisInput" FROM "Analysis" a JOIN "Ticker" t ON t.id = a."tickerId" WHERE t.symbol = $1 ORDER BY a."createdAt"',
+      ["AAPL"],
+    );
+    expect(saved.rows.map((row) => row.analysisInput.social.requestedLimit)).toEqual([20, 15, 0]);
+    expect(saved.rows[2].analysisInput.social.posts).toEqual([]);
+  } finally {
+    await client.end();
+  }
+});
+
+test("invalid X limits are rejected before any analysis starts", async ({ request }) => {
+  await request.post("/api/tickers", { data: { symbol: "AAPL" } });
+  for (const tweetLimit of [-1, 5, 10.5, 101, "10"])
+    for (const endpoint of ["/api/tickers/AAPL/analyze", "/api/analyze"])
+      expect((await request.post(endpoint, { data: { tweetLimit } })).status()).toBe(400);
+  for (const endpoint of ["/api/tickers/AAPL/analyze", "/api/analyze"])
+    expect(
+      (await request.post(endpoint, { data: { includeAuthorProfiles: "true" } })).status(),
+    ).toBe(400);
+  const client = new Client({ connectionString: testDatabaseUrl() });
+  try {
+    await client.connect();
+    expect(
+      (await client.query('SELECT count(*)::int AS count FROM "AnalysisRun"')).rows[0].count,
+    ).toBe(0);
+  } finally {
+    await client.end();
+  }
+});
+
+test("author lookups are optional and profile snapshots remain visibly unverified", async ({
+  page,
+  request,
+}) => {
+  await request.post("/api/tickers", { data: { symbol: "AAPL" } });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Analyze AAPL", exact: true }).click();
+  await expect(page.getByLabel("Look up new author profiles")).not.toBeChecked();
+  await page.getByLabel("Look up new author profiles").check();
+  await expect(page.getByRole("dialog")).toContainText("up to 3 new or expired profiles");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "/private/tmp/jev-x-profiles-dialog-mobile.png" });
+  const response = page.waitForResponse((result) =>
+    result.url().endsWith("/api/tickers/AAPL/analyze"),
+  );
+  await page.getByRole("dialog").getByRole("button", { name: "Analyze", exact: true }).click();
+  expect((await response).request().postDataJSON()).toEqual({
+    force: false,
+    tweetLimit: 10,
+    includeAuthorProfiles: true,
+  });
+  await page.goto("/tickers/AAPL");
+  const social = page.getByRole("region", { name: "X discussion", exact: true });
+  await expect(social).toContainText("3 author profiles included");
+  await expect(social).toContainText("have not been independently verified");
+  await social.getByText("View 10 posts", { exact: true }).click();
+  await expect(social.getByText("@demo_author_1", { exact: true })).toBeVisible();
+  await social.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "/private/tmp/jev-x-profiles-detail-mobile.png" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.getByRole("button", { name: "Re-analyze", exact: true }).click();
+  await expect(page.getByLabel("Look up new author profiles")).not.toBeChecked();
+  await page.getByLabel("Include X posts").uncheck();
+  await expect(page.getByLabel("Look up new author profiles")).toBeDisabled();
+  const client = new Client({ connectionString: testDatabaseUrl() });
+  try {
+    await client.connect();
+    const saved = await client.query('SELECT "analysisInput" FROM "Analysis"');
+    expect(saved.rows[0].analysisInput.social.authors).toHaveLength(3);
+    expect(saved.rows[0].analysisInput.social.authors[0].fetchedAt).toBeTruthy();
+    expect(
+      (
+        await client.query('SELECT count(*)::int AS count FROM "ApiUsage" WHERE provider = $1', [
+          "x",
+        ])
+      ).rows[0].count,
+    ).toBe(0);
+  } finally {
+    await client.end();
+  }
 });
 
 test("complete research workflow persists analyses and preserves disabled ticker history", async ({
@@ -58,6 +203,7 @@ test("complete research workflow persists analyses and preserves disabled ticker
   for (const symbol of ["AAPL", "NVDA", "MSFT", "GOOGL", "AMZN", "TSLA"])
     await addTicker(page, symbol);
   await page.getByRole("button", { name: "Analyze all", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Analyze all", exact: true }).click();
   await expect(page.getByRole("button", { name: /Analyzing \d\/6/ })).toBeDisabled();
   await expect(page.getByText("6 analyses saved.")).toBeVisible({ timeout: 30000 });
   await expect(page.getByRole("row").filter({ hasText: "AAPL" })).toContainText("BUY");

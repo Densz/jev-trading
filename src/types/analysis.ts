@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { dataQualitySchema, financialReportsSchema } from "./financials";
+import { socialContextSchema } from "./social";
 
 export const symbolSchema = z
   .string()
@@ -104,6 +105,7 @@ export const analysisInputV2Schema = analysisBaseSchema.extend({
   financialReports: financialReportsSchema.nullable(),
   newsEvents: z.array(newsEventSchema).max(12),
   dataQuality: dataQualitySchema,
+  social: socialContextSchema.optional(),
 });
 export const analysisInputSchema = z.discriminatedUnion("version", [
   analysisBaseSchema.extend({ version: z.literal("1"), rubricVersion: z.literal("thesis-v1") }),

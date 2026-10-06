@@ -8,6 +8,7 @@ import {
   type NewsArticle,
 } from "@/types/analysis";
 import type { FinancialReports, DataQuality } from "@/types/financials";
+import type { SocialContext } from "@/types/social";
 import { normalizeNews, buildNewsEvents, newsCategory } from "@/lib/news/normalize";
 export { normalizeNews } from "@/lib/news/normalize";
 
@@ -150,6 +151,7 @@ export function buildAnalysisInput(options: {
   fundamentals: Fundamentals | null;
   financialReports?: FinancialReports | null;
   news: NewsArticle[];
+  social?: SocialContext;
   warnings: string[];
   horizon: AnalysisInput["horizon"];
   now?: Date;
@@ -350,5 +352,6 @@ export function buildAnalysisInput(options: {
     financialReports: reports,
     newsEvents: buildNewsEvents(news),
     dataQuality,
+    ...(options.social ? { social: options.social } : {}),
   });
 }

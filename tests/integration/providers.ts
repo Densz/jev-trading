@@ -14,12 +14,15 @@ process.env.DEMO_MODE = "false";
 process.env.TYPESAFE_API_KEY = "integration-fixture-only";
 process.env.TWELVE_DATA_API_KEY = "integration-fixture-only";
 process.env.FINNHUB_API_KEY = "integration-fixture-only";
+process.env.X_BEARER_TOKEN = "integration-fixture-only";
+process.env.X_POST_READ_COST_USD = "0.005";
 process.env.SEC_USER_AGENT = "Thesis integration contact@example.com";
 
 const { db } = await import("../../src/db/client");
 const { ExternalGateway } = await import("../../src/server/external");
 const { TwelveDataMarketProvider } = await import("../../src/lib/market/twelve-data");
 const { FinnhubNewsProvider } = await import("../../src/lib/news/finnhub");
+const { XSocialProvider } = await import("../../src/lib/social/x");
 const { SecFinancialReportsProvider } = await import("../../src/lib/financials/sec");
 const { JevDecisionEngine } = await import("../../src/lib/jev/analyze");
 const { AnalysisPipeline } = await import("../../src/lib/analysis/pipeline");
@@ -28,6 +31,8 @@ const symbol = `TEST${randomBytes(3).toString("hex").toUpperCase()}`;
 let mode: "success" | "engine-error" | "invalid-output" = "success";
 let quoteAttempts = 0;
 let networkCalls = 0;
+let xCalls = 0;
+let xStatus = 200;
 const transport: typeof fetch = async (request, options) => {
   networkCalls++;
   const url = new URL(String(request));
@@ -80,6 +85,29 @@ const transport: typeof fetch = async (request, options) => {
     ]);
   if (url.pathname === "/api/v1/stock/metric")
     return json({ symbol, metric: { peTTM: 25, epsGrowthTTMYoy: 12, revenueGrowthTTMYoy: 10 } });
+  if (url.pathname === "/2/tweets/search/recent") {
+    xCalls++;
+    assert.equal(
+      new Headers(options?.headers).get("Authorization"),
+      "Bearer integration-fixture-only",
+    );
+    assert.equal(url.searchParams.get("max_results"), "10");
+    assert.equal(url.searchParams.get("sort_order"), "relevancy");
+    assert.equal(url.searchParams.get("tweet.fields"), "created_at,public_metrics,author_id");
+    assert.equal(url.searchParams.has("expansions"), false);
+    assert.equal(url.searchParams.has("next_token"), false);
+    if (xStatus !== 200) return json({ errors: [{ detail: "fixture unavailable" }] }, xStatus);
+    return json({
+      data: Array.from({ length: 10 }, (_, index) => ({
+        id: String(1000 + index),
+        author_id: String(2000 + index),
+        text: `$${symbol}: company earnings update ${index + 1}`,
+        created_at: new Date(now.getTime() - 3600000).toISOString(),
+        public_metrics: { like_count: index * 10, retweet_count: index },
+      })),
+      meta: { result_count: 10, next_token: "never-follow-this-page" },
+    });
+  }
   if (["www.sec.gov", "data.sec.gov"].includes(url.hostname)) {
     assert.equal(
       new Headers(options?.headers).get("User-Agent"),
@@ -140,6 +168,7 @@ try {
       return {
         market: new TwelveDataMarketProvider(gateway),
         news: new FinnhubNewsProvider(gateway),
+        social: new XSocialProvider(gateway),
         financials: new SecFinancialReportsProvider(gateway),
         engine: new JevDecisionEngine(gateway),
       };
@@ -149,14 +178,16 @@ try {
   const first = await pipeline.analyzeTicker(symbol);
   assert.equal(first.status, "succeeded");
   assert.equal(quoteAttempts, 2);
+  assert.equal(xCalls, 1, "X must not follow the pagination token");
   const callsAfterFirst = networkCalls;
-  const second = await pipeline.analyzeTicker(symbol, { force: true });
+  const second = await pipeline.analyzeTicker(symbol, { force: true, tweetLimit: 100 });
   assert.equal(second.status, "succeeded");
   assert.equal(
     networkCalls - callsAfterFirst,
     1,
     "Only Jev should be called when provider caches are warm",
   );
+  assert.equal(xCalls, 1, "Increasing the limit must reuse the same 24-hour X collection");
   mode = "engine-error";
   assert.equal((await pipeline.analyzeTicker(symbol, { force: true })).status, "failed");
   mode = "invalid-output";
@@ -168,8 +199,17 @@ try {
     financialReports: { quarterly: unknown[]; annual: unknown[]; excerpts: unknown[] };
     dataQuality: { status: string };
     news: { url: string }[];
+    social: { requestedLimit: number; fetchedCount: number; posts: unknown[] };
   };
   assert.equal(snapshotInput.version, "2");
+  assert.equal(snapshotInput.social.fetchedCount, 10);
+  assert.equal(snapshotInput.social.posts.length, 10);
+  assert.deepEqual(
+    saved
+      .map((analysis) => (analysis.analysisInput as typeof snapshotInput).social.requestedLimit)
+      .sort((a, b) => a - b),
+    [10, 100],
+  );
   assert.equal(snapshotInput.financialReports.quarterly.length, 8);
   assert.equal(snapshotInput.financialReports.annual.length, 3);
   assert.ok(snapshotInput.financialReports.excerpts.length > 0);
@@ -206,7 +246,9 @@ try {
   assert.equal(runs[3].errorCode, "MALFORMED_RESPONSE");
   assert.ok(runs[3].rawOutput, "Malformed engine output should remain inspectable");
   const usage = await db.apiUsage.findMany({ where: { symbol } });
-  assert.equal(usage.filter((u) => u.cached).length, 15);
+  assert.equal(usage.filter((u) => u.cached).length, 18);
+  assert.equal(usage.filter((u) => u.provider === "x" && !u.cached).length, 1);
+  assert.equal(usage.find((u) => u.provider === "x" && !u.cached)?.estimatedCostUsd, 0.05);
   assert.equal(usage.filter((u) => u.provider === "jev" && u.inputTokens === 1000).length, 3);
   assert.ok(usage.some((u) => u.provider === "twelvedata" && !u.success && u.attempt === 1));
   assert.ok(
@@ -217,6 +259,26 @@ try {
         Math.abs(u.estimatedCostUsd - 0.000042) < 1e-12,
     ),
   );
+  // Verify opt-out and failures against the real gateway, without reaching an external service.
+  await db.providerCache.deleteMany({ where: { key: `live:x:posts:v1:${symbol}` } });
+  const xProvider = new XSocialProvider(new ExternalGateway(symbol, undefined, transport));
+  const xCallsBeforeDisabled = xCalls;
+  await xProvider.getPosts(symbol, "Integration Test Company", 0);
+  assert.equal(xCalls, xCallsBeforeDisabled, "Disabling X must make no network request");
+  xStatus = 503;
+  await assert.rejects(() => xProvider.getPosts(symbol, "Integration Test Company", 10));
+  assert.equal(xCalls - xCallsBeforeDisabled, 1, "X failures must not trigger automatic retries");
+  const xFailure = await db.apiUsage.findFirst({
+    where: { symbol, provider: "x", success: false },
+  });
+  assert.equal(xFailure?.attempt, 1);
+  assert.equal(
+    xFailure?.estimatedCostUsd,
+    null,
+    "Unknown failed-request billing must not be recorded as free",
+  );
+  const { runXProfileIntegration } = await import("./x-profiles");
+  await runXProfileIntegration(symbol);
   console.info(
     "Provider integration passed: actual SDK serialization, PostgreSQL cache/rate limits, retries, usage billing, and failed-output persistence.",
   );

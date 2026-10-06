@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AnalysisPipeline, type AnalysisRepository, type Claim } from "@/lib/analysis/pipeline";
 import type { AnalysisInput, EngineResult } from "@/types/analysis";
+import type { SocialCollection } from "@/types/social";
 import { AppError } from "@/lib/errors";
 import { article, history, now, quote, validOutput } from "./fixtures";
 import { normalizeCompanyFacts } from "@/lib/financials/normalize";
@@ -52,6 +53,14 @@ function setup() {
       })),
     },
     news: { getNews: vi.fn(async () => [article]) },
+    social: {
+      provider: "x" as const,
+      getPosts: vi.fn(async (): Promise<SocialCollection> => ({
+        fetchedCount: 0,
+        fetchedAt: now.toISOString(),
+        posts: [],
+      })),
+    },
     financials: {
       getReports: vi.fn(async () => normalizeCompanyFacts(companyFactsFixture(), fixtureCik, now)),
     },
@@ -92,6 +101,60 @@ describe("analysis pipeline", () => {
     expect(providers.engine.analyze).toHaveBeenCalledOnce();
     expect((await pipeline.analyzeTicker("AAPL", { force: true })).status).toBe("succeeded");
     expect(repository.saved).toHaveLength(2);
+  });
+  it("defaults to 10 X posts, carries per-analysis overrides, and performs no collection when disabled", async () => {
+    const { pipeline, providers, repository } = setup();
+    await pipeline.analyzeTicker("AAPL");
+    expect(providers.social.getPosts).toHaveBeenCalledWith("AAPL", "Apple Inc.", 10);
+    await pipeline.analyzeTicker("AAPL", { force: true, tweetLimit: 20 });
+    expect(providers.social.getPosts).toHaveBeenLastCalledWith("AAPL", "Apple Inc.", 20);
+    await pipeline.analyzeTicker("AAPL", { force: true, tweetLimit: 0 });
+    expect(providers.social.getPosts).toHaveBeenCalledTimes(2);
+    const saved = repository.saved[2];
+    if (saved.version === "2")
+      expect(saved.social).toMatchObject({ status: "disabled", requestedLimit: 0, posts: [] });
+  });
+  it("keeps an X outage optional and explicit without inflating verified news coverage", async () => {
+    const { pipeline, providers, repository } = setup();
+    providers.social.getPosts.mockRejectedValue(
+      new AppError("PROVIDER_UNAVAILABLE", "X unavailable"),
+    );
+    expect((await pipeline.analyzeTicker("AAPL")).status).toBe("succeeded");
+    const saved = repository.saved[0];
+    if (saved.version === "2") {
+      expect(saved.social).toMatchObject({ status: "unavailable", requestedLimit: 10, posts: [] });
+      expect(saved.warnings.join(" ")).toContain("X unavailable");
+      expect(saved.dataQuality.newsIncluded).toBe(saved.news.length);
+    }
+  });
+  it("enables author lookups only on request and preserves profile metadata in the saved snapshot", async () => {
+    const { pipeline, providers, repository } = setup();
+    const author = {
+      id: "50",
+      username: "analyst",
+      name: "Analyst",
+      description: "Self-reported bio",
+      createdAt: null,
+      website: null,
+      followers: 100,
+      fetchedAt: now.toISOString(),
+    };
+    providers.social.getPosts.mockResolvedValue({
+      fetchedCount: 0,
+      fetchedAt: now.toISOString(),
+      posts: [],
+      authors: [author],
+      authorProfilesMessage: "Some profiles unavailable.",
+    });
+    await pipeline.analyzeTicker("AAPL", { includeAuthorProfiles: true });
+    expect(providers.social.getPosts).toHaveBeenCalledWith("AAPL", "Apple Inc.", 10, {
+      includeAuthorProfiles: true,
+    });
+    const saved = repository.saved[0];
+    if (saved.version === "2") {
+      expect(saved.social?.authors).toEqual([author]);
+      expect(saved.social?.authorProfilesMessage).toBe("Some profiles unavailable.");
+    }
   });
   it("blocks overlapping manual calls even when forced", async () => {
     const { pipeline, providers } = setup();

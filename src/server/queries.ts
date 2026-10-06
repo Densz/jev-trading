@@ -214,6 +214,12 @@ export function publicConfiguration() {
   return {
     demo: env.DEMO_MODE,
     horizon: env.INVESTMENT_HORIZON,
+    xEnabled: env.DEMO_MODE || !!env.X_BEARER_TOKEN,
+    defaultTweetLimit: env.X_DEFAULT_TWEET_LIMIT,
+    xPostReadCostUsd: env.X_POST_READ_COST_USD,
+    xProfileReadCostUsd: env.X_PROFILE_READ_COST_USD,
+    xProfileLookupLimit: env.X_PROFILE_LOOKUP_LIMIT,
+    xProfileCacheDays: env.X_PROFILE_CACHE_DAYS,
     financialReportsEnabled:
       env.DEMO_MODE || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(env.SEC_USER_AGENT ?? ""),
     missing: env.DEMO_MODE

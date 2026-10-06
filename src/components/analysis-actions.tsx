@@ -3,15 +3,21 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, RefreshCw, Sparkles, XCircle } from "lucide-react";
 import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { AnalysisDialog } from "./analysis-dialog";
 import type { RunResult } from "@/types/analysis";
+import type { SocialConfiguration } from "@/types/social";
 
 export function useAnalysis() {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [progress, setProgress] = useState(0);
-  async function analyze(symbol?: string, force = false) {
+  async function analyze(
+    symbol?: string,
+    force = false,
+    tweetLimit?: number,
+    includeAuthorProfiles = false,
+  ) {
     if (busy) return;
     setBusy(symbol ?? "all");
     setProgress(0);
@@ -22,7 +28,11 @@ export function useAnalysis() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ force }),
+          body: JSON.stringify({
+            force,
+            tweetLimit,
+            ...(includeAuthorProfiles ? { includeAuthorProfiles: true } : {}),
+          }),
         },
       );
       if (symbol) {
@@ -107,20 +117,19 @@ export function TickerAnalyze({
   hasAnalysis,
   enabled,
   running,
+  config,
 }: {
   symbol: string;
   hasAnalysis: boolean;
   enabled: boolean;
   running: boolean;
+  config: SocialConfiguration;
 }) {
   const { busy, message, analyze } = useAnalysis();
   const [confirm, setConfirm] = useState(false);
   return (
     <div>
-      <Button
-        disabled={!enabled || !!busy || running}
-        onClick={() => (hasAnalysis ? setConfirm(true) : void analyze(symbol))}
-      >
+      <Button disabled={!enabled || !!busy || running} onClick={() => setConfirm(true)}>
         {busy || running ? (
           <Loader2 className="animate-spin" />
         ) : hasAnalysis ? (
@@ -131,28 +140,18 @@ export function TickerAnalyze({
         {busy || running ? "Analyzing..." : hasAnalysis ? "Re-analyze" : "Analyze"}
       </Button>
       <StatusMessage message={message} />
-      <Dialog open={confirm} onOpenChange={setConfirm}>
-        <DialogContent>
-          <DialogTitle>Re-analyze {symbol}?</DialogTitle>
-          <DialogDescription>
-            This creates a new saved analysis even if one already exists today. Cached market data
-            and news may be reused. Live mode may incur another Jev API charge.
-          </DialogDescription>
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setConfirm(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                setConfirm(false);
-                void analyze(symbol, true);
-              }}
-            >
-              Re-analyze
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {confirm && (
+        <AnalysisDialog
+          symbol={symbol}
+          force={hasAnalysis}
+          config={config}
+          onClose={() => setConfirm(false)}
+          onAnalyze={(tweetLimit, includeAuthorProfiles) => {
+            setConfirm(false);
+            void analyze(symbol, hasAnalysis, tweetLimit, includeAuthorProfiles);
+          }}
+        />
+      )}
     </div>
   );
 }

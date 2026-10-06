@@ -107,9 +107,15 @@ export class ExternalGateway {
     operation: string,
     url: URL,
     headers?: Record<string, string>,
-    options: { responseType?: "json" | "text"; maxBytes?: number } = {},
+    options: {
+      responseType?: "json" | "text";
+      maxBytes?: number;
+      maxAttempts?: 1 | 3;
+      estimateCostUsd?: (body: unknown) => number | null;
+    } = {},
   ): Promise<unknown> {
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    const maxAttempts = options.maxAttempts ?? 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       await this.reserve(provider);
       const started = Date.now();
       let retryAfter = 0;
@@ -191,7 +197,8 @@ export class ExternalGateway {
           success: true,
           attempt,
           durationMs: Date.now() - started,
-          estimatedCostUsd: 0,
+          estimatedCostUsd:
+            options.estimateCostUsd?.(body) ?? (options.estimateCostUsd ? undefined : 0),
         });
         return body;
       } catch (error) {
@@ -215,7 +222,7 @@ export class ExternalGateway {
           durationMs: Date.now() - started,
           errorCode: known.code,
         });
-        if (attempt === 3 || !known.retryable) throw known;
+        if (attempt === maxAttempts || !known.retryable) throw known;
         await delay(
           Math.min(60000, Math.max(retryAfter, 500 * 2 ** (attempt - 1) + Math.random() * 250)),
         );

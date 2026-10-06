@@ -11,6 +11,20 @@ import {
   type RunResult,
 } from "@/types/analysis";
 import type { FinancialReportsProvider } from "@/types/financials";
+import {
+  DEFAULT_TWEET_LIMIT,
+  MAX_SOCIAL_CONTEXT_POSTS,
+  tweetLimitSchema,
+  type SocialContext,
+  type SocialProvider,
+} from "@/types/social";
+
+type AnalysisOptions = {
+  force?: boolean;
+  trigger?: string;
+  tweetLimit?: number;
+  includeAuthorProfiles?: boolean;
+};
 
 export type Claim =
   | { status: "claimed"; runId: string; tickerId: string }
@@ -38,15 +52,15 @@ export class AnalysisPipeline {
       market: MarketDataProvider;
       news: NewsProvider;
       financials?: FinancialReportsProvider;
+      social?: SocialProvider;
       engine: DecisionEngine;
     },
     private horizon: AnalysisInput["horizon"],
     private clock: () => Date = () => new Date(),
+    private defaultTweetLimit = DEFAULT_TWEET_LIMIT,
   ) {}
-  async analyzeTicker(
-    symbol: string,
-    options: { force?: boolean; trigger?: string } = {},
-  ): Promise<RunResult> {
+  async analyzeTicker(symbol: string, options: AnalysisOptions = {}): Promise<RunResult> {
+    const tweetLimit = tweetLimitSchema.parse(options.tweetLimit ?? this.defaultTweetLimit);
     const now = this.clock();
     const claim = await this.repository.claim(
       symbol,
@@ -57,7 +71,7 @@ export class AnalysisPipeline {
     if (claim.status !== "claimed") return { symbol, ...claim };
     const { runId } = claim;
     try {
-      const { market, news, financials, engine } = this.providers(symbol, runId);
+      const { market, news, financials, social, engine } = this.providers(symbol, runId);
       await this.repository.stage(runId, "market");
       const quote = await market.getQuote(symbol);
       if (now.getTime() - new Date(quote.asOf).getTime() > 7 * 86400000)
@@ -81,10 +95,33 @@ export class AnalysisPipeline {
         market.getHistoricalData(symbol, "3mo"),
       );
       await this.repository.stage(runId, "news", { quote, history }, warnings);
-      const [articles, fundamentals] = await Promise.all([
+      const [articles, fundamentals, socialPosts] = await Promise.all([
         optional("News", () => news.getNews(symbol)),
         optional("Fundamentals", () => market.getFundamentals(symbol)),
+        social && tweetLimit > 0
+          ? optional("X posts", () =>
+              options.includeAuthorProfiles
+                ? social.getPosts(symbol, quote.name, tweetLimit, { includeAuthorProfiles: true })
+                : social.getPosts(symbol, quote.name, tweetLimit),
+            )
+          : null,
       ]);
+      const socialContext: SocialContext = {
+        provider: social?.provider ?? "x",
+        status: tweetLimit === 0 ? "disabled" : socialPosts ? "available" : "unavailable",
+        requestedLimit: tweetLimit,
+        fetchedCount: socialPosts?.fetchedCount ?? 0,
+        fetchedAt: socialPosts?.fetchedAt ?? null,
+        posts: socialPosts?.posts.slice(0, Math.min(tweetLimit, MAX_SOCIAL_CONTEXT_POSTS)) ?? [],
+        ...(socialPosts?.authors ? { authors: socialPosts.authors } : {}),
+        ...(socialPosts?.authorProfilesMessage
+          ? { authorProfilesMessage: socialPosts.authorProfilesMessage }
+          : {}),
+        ...(!social && tweetLimit > 0 ? { message: "X is not connected." } : {}),
+        ...(social && tweetLimit > 0 && !socialPosts
+          ? { message: "X posts could not be retrieved. Other research sources were used." }
+          : {}),
+      };
       await this.repository.stage(
         runId,
         "financial-reports",
@@ -97,7 +134,7 @@ export class AnalysisPipeline {
       await this.repository.stage(
         runId,
         "normalization",
-        { quote, history, fundamentals, articles, financialReports },
+        { quote, history, fundamentals, articles, financialReports, social: socialContext },
         warnings,
       );
       const input = buildAnalysisInput({
@@ -106,6 +143,7 @@ export class AnalysisPipeline {
         fundamentals,
         financialReports,
         news: articles ?? [],
+        social: socialContext,
         warnings,
         horizon: this.horizon,
         now,
@@ -133,7 +171,7 @@ export class AnalysisPipeline {
     }
   }
   async analyzeAllEnabledTickers(
-    options: { force?: boolean; trigger?: string; onResult?: (result: RunResult) => void } = {},
+    options: AnalysisOptions & { onResult?: (result: RunResult) => void } = {},
   ) {
     const results: RunResult[] = [];
     for (const symbol of await this.repository.enabledSymbols()) {

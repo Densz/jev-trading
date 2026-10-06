@@ -1,6 +1,11 @@
 import "server-only";
 import { z } from "zod";
 import { AppError } from "@/lib/errors";
+import {
+  DEFAULT_PROFILE_LOOKUP_LIMIT,
+  DEFAULT_TWEET_LIMIT,
+  tweetLimitSchema,
+} from "@/types/social";
 
 const optionalSecret = z
   .string()
@@ -11,6 +16,17 @@ const schema = z.object({
   TYPESAFE_API_KEY: optionalSecret,
   TWELVE_DATA_API_KEY: optionalSecret,
   FINNHUB_API_KEY: optionalSecret,
+  X_BEARER_TOKEN: optionalSecret,
+  X_DEFAULT_TWEET_LIMIT: z.coerce.number().pipe(tweetLimitSchema).default(DEFAULT_TWEET_LIMIT),
+  X_POST_READ_COST_USD: z.coerce.number().positive().default(0.005),
+  X_PROFILE_READ_COST_USD: z.coerce.number().positive().default(0.01),
+  X_PROFILE_LOOKUP_LIMIT: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(10)
+    .default(DEFAULT_PROFILE_LOOKUP_LIMIT),
+  X_PROFILE_CACHE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   SEC_USER_AGENT: optionalSecret,
   TYPESAFE_MODEL: z.string().default("jev-1.13.0"),
   DEMO_MODE: z
@@ -31,7 +47,9 @@ export function getEnv() {
 export function dataMode() {
   return getEnv().DEMO_MODE ? "demo" : "live";
 }
-export function requireKey(key: "TYPESAFE_API_KEY" | "TWELVE_DATA_API_KEY" | "FINNHUB_API_KEY") {
+export function requireKey(
+  key: "TYPESAFE_API_KEY" | "TWELVE_DATA_API_KEY" | "FINNHUB_API_KEY" | "X_BEARER_TOKEN",
+) {
   const value = getEnv()[key];
   if (!value)
     throw new AppError(

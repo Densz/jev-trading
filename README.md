@@ -48,6 +48,12 @@ All configuration is server-side; no secret uses a `NEXT_PUBLIC_*` variable.
 | `DATABASE_URL` | Yes | PostgreSQL connection URL; example points to Compose on port 5434. |
 | `TWELVE_DATA_API_KEY` | Live | Twelve Data quote and daily time-series access. |
 | `FINNHUB_API_KEY` | Live | Finnhub company news and basic trailing financial metrics. |
+| `X_BEARER_TOKEN` | Optional | Enables supplementary X recent-search posts; absent token makes no X calls. |
+| `X_DEFAULT_TWEET_LIMIT` | No | Defaults to `10` posts per company per collection; `0` disables X, otherwise `10-100`. Manual analyses can override it. |
+| `X_POST_READ_COST_USD` | No | Estimated price per returned X post, default `0.005`; verify current rates in the X Developer Console. |
+| `X_PROFILE_LOOKUP_LIMIT` | No | Maximum new/expired author profiles per company when explicitly selected, default `3`; `0` disables paid lookups, otherwise `1-10`. |
+| `X_PROFILE_CACHE_DAYS` | No | Persistent profile cache lifetime, default `30` days; configurable from `1-365`. |
+| `X_PROFILE_READ_COST_USD` | No | Estimated price per returned X user profile, default `0.01`; fresh cached profiles require no new X read. |
 | `SEC_USER_AGENT` | Financial enrichment | Application name and real contact email for SEC fair access; never sent to Jev or exposed to clients. |
 | `TYPESAFE_API_KEY` | Live | Official TypeSafe API key. |
 | `TYPESAFE_MODEL` | No | Defaults to pinned `jev-1.13.0`; the returned model version is stored. |
@@ -99,8 +105,47 @@ To compare another engine, implement `DecisionEngine.analyze(AnalysisInput): Pro
 No Jev-specific question or answer type appears in the domain pipeline or UI.
 The original normalized `AnalysisInput` is saved on every successful analysis and can be replayed unchanged for engine comparisons.
 New analyses use `version=2` and `rubricVersion=thesis-v2`.
+New V2 inputs also retain an optional `social` snapshot with the requested X limit, collection time, returned count, included posts, and any author profiles used.
 Legacy V1 records remain readable and immutable; use Re-analyze to collect the richer context, including when a successful V1 record already exists for the same UTC day.
 Provider-specific SDK calls stay inside adapters.
+
+## Optional X research
+
+Set `X_BEARER_TOKEN` server-side to enable X recent search.
+Before an individual or batch analysis, choose the maximum posts per company or uncheck **Include X posts** to skip X entirely.
+The default is 10, including scheduled analyses; change `X_DEFAULT_TWEET_LIMIT` to update that default.
+X accepts a requested limit of 10-100, so 1-9 is rejected rather than silently rounded up.
+Manual overrides apply to that run only and are saved in its normalized input.
+
+Each fresh collection makes one search request with `max_results` set to the chosen limit and `sort_order=relevancy`, without pagination, automatic retries, or additional user/media expansions.
+Queries combine the stock cashtag and company name with business topics, excluding reposts and replies.
+Collections, including valid empty responses, are cached for 24 hours per ticker.
+Changing the limit or forcing a new analysis reuses that collection; a larger limit takes effect after cache expiry and never triggers a top-up request.
+After deduplication and a maximum of two posts per identified author, up to ten recent posts enter the model context.
+Selection is a bounded discussion sample, not a guarantee of finding every relevant post or a representative sentiment measure.
+
+Author profiles are stored in the existing PostgreSQL `ProviderCache`, keyed by stable account ID and shared across tickers and server instances.
+Fresh profiles are reused for 30 days by default, independently of the 24-hour post cache.
+New lookups are off by default, including scheduled analyses; select **Look up new author profiles** before an individual or batch analysis to enable them for that run.
+Only missing or expired profiles for retained posts are requested, with a maximum of three new profiles per company by default and one batched `/2/users` request without retries.
+Concurrent analyses claim short database leases so the same author is not fetched twice at once.
+Explicitly missing accounts are cached for 24 hours, and incomplete or failed lookups cool down for five minutes without dropping the posts.
+Each saved analysis keeps the exact profile snapshot it used, even after the shared cache refreshes.
+Names, biographies, account dates, website links, and follower counts are metadata, not independently verified identities or reliability assessments.
+Ticker relevance and the accuracy of individual claims still require separate evidence.
+
+X posts remain separate from publisher news and official filings, and do not improve the verified data-coverage checklist.
+The engine is instructed to treat post text and author biographies as untrusted, unverified supplementary discussion.
+An X failure remains visible but does not block analysis from other sources.
+Demo mode uses explicitly synthetic posts and makes no external calls.
+
+At the current estimated rate, 10 returned posts cost up to $0.05 per fresh collection before filtering.
+Ten companies collected once daily for 30 days would cost up to $15 for post reads at that rate, excluding other providers and any unknown failure billing.
+Selecting new profile lookups adds up to $0.03 per company per run at the default cap and estimated profile rate, with cached profiles reused for free.
+The analysis dialog includes that optional cost in its estimate.
+The usage page estimates X spend from returned post and profile counts before filtering; cache hits are zero, and failed requests with unknown billing remain unknown.
+Set a spending limit in the [X Developer Console](https://console.x.com/) to enforce your own monthly budget.
+Current endpoint parameters and prices are documented in [recent search](https://docs.x.com/x-api/posts/search-recent-posts) and [X API pricing](https://docs.x.com/x-api/getting-started/pricing).
 
 ## Period-specific financial research
 

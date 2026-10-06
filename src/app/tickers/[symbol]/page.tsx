@@ -12,7 +12,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import { getTickerHistory } from "@/server/queries";
+import { getTickerHistory, publicConfiguration } from "@/server/queries";
 import { symbolSchema } from "@/types/analysis";
 import { money, percent, relativeTime, cn } from "@/lib/utils";
 import { DecisionBadge } from "@/components/decision-badge";
@@ -20,6 +20,7 @@ import { HistoryChart } from "@/components/history-chart";
 import { TickerAnalyze } from "@/components/analysis-actions";
 import { RunPolling } from "@/components/run-polling";
 import { CoverageNotice, FinancialResearch } from "@/components/financial-research";
+import { SocialResearch } from "@/components/social-research";
 import type { Metadata } from "next";
 
 export async function generateMetadata({
@@ -75,6 +76,7 @@ export default async function TickerPage({
           hasAnalysis={!!latest}
           enabled={data.ticker.enabled}
           running={active}
+          config={publicConfiguration()}
         />
       </div>
       {selectedId && selected && (
@@ -287,6 +289,9 @@ export default async function TickerPage({
               )}
             </section>
           </div>
+          <SocialResearch
+            social={selected.input.version === "2" ? selected.input.social : undefined}
+          />
           <section className="panel mb-5 overflow-hidden">
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-sm font-medium">News included in this analysis</h2>

@@ -1,14 +1,11 @@
 import { analysisService } from "@/server/analysis-service";
 import { errorResponse, readBody } from "@/server/http";
-import { z } from "zod";
+import { analysisOptionsSchema } from "@/types/social";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function POST(request: Request) {
   try {
-    const options = z
-      .object({ force: z.boolean().default(false) })
-      .strict()
-      .parse(await readBody(request));
+    const options = analysisOptionsSchema.parse(await readBody(request));
     const service = analysisService();
     const encoder = new TextEncoder();
     let closed = false;

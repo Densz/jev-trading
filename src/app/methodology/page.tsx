@@ -53,6 +53,26 @@ export default function MethodologyPage() {
           </p>
         </div>
         <div>
+          <h2 className="text-sm font-medium">X discussion and collection limits</h2>
+          <p className="mt-2 text-xs leading-6 text-muted-foreground">
+            Optional X recent search requests up to {getEnv().X_DEFAULT_TWEET_LIMIT} posts per
+            company by default. The limit can be changed or X disabled before each manual analysis.
+            Search uses company names, stock cashtags, business topics, and X relevance ordering,
+            excluding reposts and replies. Up to ten recent posts are included after deduplication
+            and a maximum of two posts per identified author. This is a selected discussion sample,
+            not a representative sentiment measure or verified reporting. Collections are reused for
+            24 hours even when the requested limit changes. There is one request per collection,
+            with no pagination or automatic retries. X outages do not block the other sources.
+          </p>
+          <p className="mt-2 text-xs leading-6 text-muted-foreground">
+            Author profiles are cached for {getEnv().X_PROFILE_CACHE_DAYS} days by account ID and
+            shared across companies. New profile lookups are off by default; when enabled, up to{" "}
+            {getEnv().X_PROFILE_LOOKUP_LIMIT} new or expired authors are requested per company in
+            one batch without retries. Profile details and follower counts do not verify account
+            identity or the accuracy of a post. Each analysis preserves the profiles it used.
+          </p>
+        </div>
+        <div>
           <h2 className="text-sm font-medium">What confidence means</h2>
           <p className="mt-2 text-xs leading-6 text-muted-foreground">
             Confidence describes how concentrated Jev’s probability distribution is for the

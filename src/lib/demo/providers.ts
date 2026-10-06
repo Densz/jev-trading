@@ -9,6 +9,8 @@ import type {
 import { AppError } from "@/lib/errors";
 import type { FinancialReportsProvider } from "@/types/financials";
 import { normalizeCompanyFacts } from "@/lib/financials/normalize";
+import { MAX_SOCIAL_CONTEXT_POSTS, tweetLimitSchema, type SocialProvider } from "@/types/social";
+import { getEnv } from "@/server/env";
 
 export const demoCompanies: Record<
   string,
@@ -143,6 +145,50 @@ export class DemoDecisionEngine implements DecisionEngine {
           "Valuation sensitivity and macroeconomic uncertainty remain relevant considerations in this sample.",
         ],
       },
+    };
+  }
+}
+export class DemoSocialProvider implements SocialProvider {
+  readonly provider = "synthetic";
+  async getPosts(
+    symbol: string,
+    companyName: string,
+    limit: number,
+    options?: { includeAuthorProfiles?: boolean },
+  ) {
+    tweetLimitSchema.parse(limit);
+    company(symbol);
+    const now = new Date();
+    return {
+      fetchedCount: limit,
+      fetchedAt: now.toISOString(),
+      posts: Array.from({ length: Math.min(limit, MAX_SOCIAL_CONTEXT_POSTS) }, (_, index) => ({
+        id: String(9000000000000000n + BigInt(index)),
+        authorId: String(8000000000000000n + BigInt(index)),
+        text: `[Synthetic] $${symbol}: sample discussion ${index + 1} about ${companyName}'s earnings and outlook. This is a demonstration, not a real X post.`,
+        publishedAt: new Date(now.getTime() - (index + 1) * 3600000).toISOString(),
+        url: `https://x.com/i/web/status/${9000000000000000n + BigInt(index)}`,
+        likes: 20 + index * 3,
+        reposts: 5 + index,
+      })),
+      ...(options?.includeAuthorProfiles && limit > 0
+        ? {
+            authors: Array.from(
+              { length: Math.min(limit, getEnv().X_PROFILE_LOOKUP_LIMIT) },
+              (_, index) => ({
+                id: String(8000000000000000n + BigInt(index)),
+                username: `demo_author_${index + 1}`,
+                name: `Synthetic author ${index + 1}`,
+                description:
+                  "Synthetic profile for demonstration. Identity and claims have not been verified.",
+                createdAt: "2020-01-01T00:00:00.000Z",
+                website: null,
+                followers: 100 + index,
+                fetchedAt: now.toISOString(),
+              }),
+            ),
+          }
+        : {}),
     };
   }
 }

@@ -143,7 +143,16 @@ Keep the encryption key securely backed up separately from database backups. Cha
 
 The selected provider produces BUY/HOLD/SELL, an explanation, bullish/bearish factors and risks from the same bounded evidence context. Returned model versions and the requested model ID are retained in history. Daily deduplication is scoped to provider and requested model; re-analysis deliberately saves an additional record. To compare providers, run each explicitly and open their saved records. AI certainty scores are subjective and uncalibrated, unlike Jev's concentration formula, and should not be compared numerically.
 
-OpenAI, DeepSeek, and Claude analyses send at most 64,000 context characters and request at most 4,096 completion tokens with a 60-second timeout. Those paid requests are not automatically retried; Jev retains its existing bounded retry policy. Token usage is recorded when returned, including on invalid decisions; model prices are left unknown rather than guessed. Set spending limits in your provider accounts. A ChatGPT subscription does not include API billing. Demo analyses and demo connection tests never call external APIs.
+OpenAI, DeepSeek, and Claude analyses send at most 64,000 context characters and request concise final decisions.
+OpenAI and Claude request at most 4,096 completion tokens with a 60-second timeout.
+DeepSeek requests at most 16,384 output tokens with a 120-second timeout, allowing room for reasoning before the final JSON.
+Its connection tests allow at most 2,048 output tokens with a 60-second timeout and do not enable JSON mode.
+A response stopped by the provider's token limit fails explicitly with `OUTPUT_LIMIT`; partial output is never accepted as a recommendation.
+Those paid requests are not automatically retried; Jev retains its existing bounded retry policy.
+Token usage is recorded when returned, including on invalid decisions; model prices are left unknown rather than guessed.
+Set spending limits in your provider accounts.
+A ChatGPT subscription does not include API billing.
+Demo analyses and demo connection tests never call external APIs.
 
 ## Architecture
 
@@ -384,6 +393,7 @@ Provider integration exercises real SDK serialization and all live adapters agai
 Snapshot integration tests create a separate database, apply the initial application migration and a fixture migration through Prisma, restore the pre-migration snapshot, and verify that the migration can be applied again.
 They also check safety snapshots, corruption rejection, failed-restore preservation, concurrent-operation refusal, and archive permissions.
 AI tests cover authenticated encryption, response bounds, provider serialization, invalid outputs, token usage, settings persistence, model-scoped deduplication, key replacement/deletion, and the browser settings workflow.
+DeepSeek route integration checks reasoning budgets, connection tests, output-limit diagnostics, billing preservation, and the absence of automatic retries.
 No tests call paid APIs.
 The test setup creates and migrates a dedicated database ending in `_test`; only that isolated database is reset by browser tests.
 Run browser and provider integration tests sequentially because they share this test database.

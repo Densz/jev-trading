@@ -133,18 +133,65 @@ describe("structured AI analysis", () => {
     },
   );
   it("rejects malformed or truncated decisions while retaining billed usage", async () => {
-    for (const response of [
-      chat("not JSON"),
-      chat(JSON.stringify({ ...validOutput.decision, confidence: 2 })),
-      chat(JSON.stringify(validOutput.decision), "length"),
+    for (const { response, code } of [
+      { response: chat("not JSON"), code: "MALFORMED_RESPONSE" },
+      {
+        response: chat(JSON.stringify({ ...validOutput.decision, confidence: 2 })),
+        code: "MALFORMED_RESPONSE",
+      },
+      { response: chat(JSON.stringify(validOutput.decision), "length"), code: "OUTPUT_LIMIT" },
     ]) {
       const { engine, record, fetcher } = fixture("openai", response);
-      await expect(engine.analyze(input())).rejects.toMatchObject({ code: "MALFORMED_RESPONSE" });
+      await expect(engine.analyze(input())).rejects.toMatchObject({ code });
       expect(fetcher).toHaveBeenCalledTimes(1);
       expect(record).toHaveBeenCalledWith(
         expect.objectContaining({ success: false, inputTokens: 100, outputTokens: 20 }),
       );
     }
+  });
+  it("rejects reasoning-only output and keeps its billed tokens without retrying", async () => {
+    const { engine, fetcher, record } = fixture(
+      "deepseek",
+      Response.json({
+        model: "deepseek-reasoner",
+        choices: [
+          {
+            finish_reason: "length",
+            message: {
+              content: null,
+              reasoning_content: JSON.stringify(validOutput.decision),
+            },
+          },
+        ],
+        usage: { prompt_tokens: 14819, completion_tokens: 16384 },
+      }),
+    );
+    await expect(engine.analyze(input())).rejects.toMatchObject({ code: "OUTPUT_LIMIT" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        inputTokens: 14819,
+        outputTokens: 16384,
+        errorCode: "OUTPUT_LIMIT",
+      }),
+    );
+  });
+  it("rejects Claude token-limit responses even when their JSON is valid", async () => {
+    const { engine, fetcher, record } = fixture(
+      "anthropic",
+      Response.json({
+        model: "claude-fixture",
+        stop_reason: "max_tokens",
+        content: [{ type: "text", text: JSON.stringify(validOutput.decision) }],
+        usage: { input_tokens: 100, output_tokens: 4096 },
+      }),
+    );
+    await expect(engine.analyze(input())).rejects.toMatchObject({ code: "OUTPUT_LIMIT" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({ success: false, outputTokens: 4096 }),
+    );
   });
   it("does not expose upstream error bodies or retry paid requests", async () => {
     const { engine, record, fetcher } = fixture(

@@ -49,6 +49,7 @@ model Analysis {
   engineOutput       Json            @db.JsonB
   engine             String
   model              String
+  requestedModel     String?
   rubricVersion      String
   dataMode           String
   analysisDay        DateTime        @db.Date
@@ -113,4 +114,20 @@ model RateLimitBucket {
   key       String   @id
   startedAt DateTime
   count     Int
+}
+
+// One personal workspace. No per-user accounts in V1.
+model AiProviderConfig {
+  provider        String   @id
+  model           String
+  encryptedApiKey String
+  keySuffix       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AiSettings {
+  id              String   @id @default("workspace")
+  defaultProvider String   @default("jev")
+  updatedAt       DateTime @updatedAt
 }

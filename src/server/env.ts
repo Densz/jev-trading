@@ -36,7 +36,6 @@ const schema = z.object({
   INVESTMENT_HORIZON: z.enum(["short-term", "medium-term", "long-term"]).default("medium-term"),
   TWELVE_DATA_CREDITS_PER_MINUTE: z.coerce.number().int().min(1).max(10000).default(8),
   JEV_INPUT_USD_PER_MILLION: z.coerce.number().nonnegative().default(0.042),
-  APP_PASSWORD: optionalSecret,
   APP_ORIGIN: optionalSecret.pipe(z.url().optional()),
   CRON_SECRET: optionalSecret,
   DAILY_CRON: z.string().default("15 22 * * 1-5"),

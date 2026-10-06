@@ -27,6 +27,7 @@ export default async function HistoryPage() {
                   <th>Analyzed</th>
                   <th>Decision</th>
                   <th>Confidence</th>
+                  <th>Provider / model</th>
                   <th>Summary</th>
                   <th>
                     <span className="sr-only">Open</span>
@@ -52,6 +53,9 @@ export default async function HistoryPage() {
                     </td>
                     <td>
                       <Confidence value={a.confidence} />
+                    </td>
+                    <td className="text-xs text-muted-foreground">
+                      {a.engine} / {a.model}
                     </td>
                     <td>
                       <p className="line-clamp-2 max-w-md text-[11px] leading-5 text-muted-foreground">

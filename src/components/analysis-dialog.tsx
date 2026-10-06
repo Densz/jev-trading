@@ -47,6 +47,7 @@ export function AnalysisDialog({
             : symbol
               ? "Choose the research context for this analysis."
               : `Analyze ${tickerCount} enabled companies. The X limit applies to each company.`}
+          {!config.demo && " Live mode may incur charges from the selected AI provider."}
         </DialogDescription>
         <form
           className="mt-5"

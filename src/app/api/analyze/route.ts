@@ -1,12 +1,12 @@
 import { analysisService } from "@/server/analysis-service";
 import { errorResponse, readBody } from "@/server/http";
-import { analysisOptionsSchema } from "@/types/social";
+import { analysisOptionsSchema } from "@/lib/ai/config";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function POST(request: Request) {
   try {
-    const options = analysisOptionsSchema.parse(await readBody(request));
-    const service = analysisService();
+    const { provider, ...options } = analysisOptionsSchema.parse(await readBody(request));
+    const service = await analysisService(provider);
     const encoder = new TextEncoder();
     let closed = false;
     const stream = new ReadableStream({

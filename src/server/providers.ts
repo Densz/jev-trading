@@ -13,8 +13,14 @@ import {
   DemoSocialProvider,
 } from "@/lib/demo/providers";
 import { SecFinancialReportsProvider } from "@/lib/financials/sec";
+import { AiDecisionEngine } from "@/lib/ai/analyze";
+import type { EngineConfiguration } from "./ai-settings";
 
-export function createProviders(symbol: string, runId?: string) {
+export function createProviders(
+  symbol: string,
+  runId?: string,
+  configuration?: EngineConfiguration,
+) {
   const gateway = new ExternalGateway(symbol, runId);
   return getEnv().DEMO_MODE
     ? {
@@ -28,7 +34,10 @@ export function createProviders(symbol: string, runId?: string) {
         market: new TwelveDataMarketProvider(gateway),
         news: new FinnhubNewsProvider(gateway),
         financials: new SecFinancialReportsProvider(gateway),
-        engine: new JevDecisionEngine(gateway),
+        engine:
+          configuration && configuration.provider !== "jev"
+            ? new AiDecisionEngine(gateway, configuration)
+            : new JevDecisionEngine(gateway, configuration),
         ...(getEnv().X_BEARER_TOKEN ? { social: new XSocialProvider(gateway) } : {}),
       };
 }

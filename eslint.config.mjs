@@ -6,6 +6,7 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...fixupConfigRules([...nextVitals, ...nextTs]),
   globalIgnores([
+    ".db-backups/**",
     ".next/**",
     ".next-e2e/**",
     ".next-production/**",

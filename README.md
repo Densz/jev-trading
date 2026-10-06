@@ -29,6 +29,46 @@ Without this setting, financial enrichment is explicitly unavailable and coverag
 Provider access and plan entitlements must be verified for your account.
 There are no shared API keys in this repository.
 
+### Local database snapshots
+
+Local snapshots let you test migrations and restore the previous database state.
+The commands use the PostgreSQL tools inside this project's Docker Compose container, so no host PostgreSQL client is required.
+`DATABASE_URL` selects the database and must point to the loopback port published by that container.
+
+```bash
+# Save the database before applying a migration.
+pnpm db:backup before-migration
+pnpm prisma migrate deploy
+
+# List snapshots, or restore the latest explicitly created snapshot.
+pnpm db:backups
+pnpm db:restore
+
+# Restore a specific snapshot (use the path printed by db:backup).
+pnpm db:restore .db-backups/jev_20261006T100000000Z_before-migration_01234567.dump
+```
+
+Snapshots include the complete schema, data, sequences and `_prisma_migrations` table.
+Restoring a snapshot therefore also restores Prisma's record of which migrations have been applied.
+It does not change your Git checkout or migration files.
+To retry the migration after a restore, run `pnpm prisma migrate deploy` again.
+If you switch to older application code, run `pnpm prisma generate` to align its client with that code's schema.
+
+Stop the application and scheduler before restoring, then restart them afterwards.
+The restore verifies the SHA-256 checksum, restores into a temporary database, and creates a safety snapshot before replacing the current database.
+The two database renames happen in one transaction; a preparation or swap failure preserves the original database.
+The command prints the safety snapshot's path so you can undo the restore as well.
+Safety snapshots do not replace the latest explicit snapshot.
+The command asks you to type the database name; use `--yes` for intentional non-interactive restores.
+Concurrent snapshot commands for the same database are refused.
+
+Archives and their `.info.json` files are stored together in the gitignored `.db-backups/` directory, with owner-only permissions, a checksum, timestamp and Git revision.
+Keep both files together when moving a snapshot.
+Set `JEV_DB_BACKUP_DIR` to use a different local directory.
+The latest snapshot is tracked separately for each database.
+Archives are not encrypted and contain all stored data.
+Server environment variables are not included in snapshots.
+
 ### Synthetic workspace
 
 Set `DEMO_MODE=true` in `.env`, restart the server, and add any of AAPL, NVDA, MSFT, GOOGL, AMZN, or TSLA.
@@ -300,11 +340,14 @@ pnpm build
 pnpm exec playwright install chromium
 pnpm test:e2e
 pnpm test:integration
+pnpm test:integration:db
 ```
 
 Domain tests cover period normalization, cumulative cash-flow derivation, fourth-quarter reconstruction, EPS safety, currencies, restatements/as-of filtering, bounded source excerpts, coverage, news identity, confidence/output validation, partial failures, successful persistence, duplicate daily prevention, retries after failure, active-run exclusion, and batch isolation.
 Browser tests exercise the complete user workflow, dark/light themes, responsive layout, PostgreSQL concurrency, unknown tickers, input validation, origin checks, and lease recovery.
 Provider integration exercises real SDK serialization and all live adapters against deterministic HTTP fixtures with actual PostgreSQL cache, throttle, usage, and failure persistence.
+Snapshot integration tests create a separate database, apply the initial application migration and a fixture migration through Prisma, restore the pre-migration snapshot, and verify that the migration can be applied again.
+They also check safety snapshots, corruption rejection, failed-restore preservation, concurrent-operation refusal, and archive permissions.
 No tests call paid APIs.
 The test setup creates and migrates a dedicated database ending in `_test`; only that isolated database is reset by browser tests.
 Run browser and provider integration tests sequentially because they share this test database.

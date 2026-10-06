@@ -10,7 +10,9 @@ test("encrypts keys, masks responses, selects defaults and supports replacement/
   try {
     await client.query('DELETE FROM "AiProviderConfig"');
     await client.query('DELETE FROM "AiSettings"');
-    await page.goto("/settings");
+    const response = await page.goto("/settings");
+    expect(response?.status()).toBe(200);
+    expect(response?.headers()["www-authenticate"]).toBeUndefined();
     await expect(page.getByRole("heading", { name: "AI settings", exact: true })).toBeVisible();
     await page.locator("#openai-key").fill(secret);
     const openai = page
@@ -78,27 +80,13 @@ test("encrypts keys, masks responses, selects defaults and supports replacement/
     await client.end();
   }
 });
-test("protects settings from unauthorized and cross-origin writes", async ({
+test("allows settings access without credentials and rejects cross-origin writes", async ({
   page,
-  playwright,
 }) => {
-  // Explicitly override the runner's default httpCredentials for this isolated client.
-  const anonymous = await playwright.request.newContext({
-    baseURL: "http://127.0.0.1:3101",
-    httpCredentials: { username: "", password: "" },
-  });
-  try {
-    expect((await anonymous.get("/api/settings/ai")).status()).toBe(401);
-    expect(
-      (
-        await anonymous.put("/api/settings/ai", {
-          data: { provider: "openai", model: "gpt-4.1-mini", apiKey: secret },
-        })
-      ).status(),
-    ).toBe(401);
-  } finally {
-    await anonymous.dispose();
-  }
+  const settings = await page.request.get("/api/settings/ai");
+  expect(settings.status()).toBe(200);
+  expect(settings.headers()["www-authenticate"]).toBeUndefined();
+  expect((await settings.json()).canStoreKeys).toBe(true);
   const crossOrigin = await page.request.put("/api/settings/ai", {
     headers: { origin: "https://attacker.example" },
     data: { provider: "openai", model: "gpt-4.1-mini", apiKey: secret },

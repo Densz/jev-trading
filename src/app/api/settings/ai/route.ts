@@ -59,12 +59,6 @@ export async function POST(request: Request) {
         "Credential tests are disabled in demo mode; no external APIs are called.",
         400,
       );
-    if ((getEnv().APP_PASSWORD?.length ?? 0) < 16)
-      throw new AppError(
-        "CONFIGURATION",
-        "Set APP_PASSWORD to at least 16 characters before testing keys.",
-        503,
-      );
     const configuration = await getEngineConfiguration(provider);
     const gateway = new ExternalGateway("SETTINGS");
     if (provider === "jev") {

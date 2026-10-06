@@ -3,41 +3,17 @@ import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 import { readBody } from "@/server/http";
 afterEach(() => vi.unstubAllEnvs());
-describe("personal workspace access", () => {
-  it("fails closed in production without a sufficiently long password", () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("APP_PASSWORD", "");
-    expect(proxy(new NextRequest("https://research.example.com/")).status).toBe(503);
-    vi.stubEnv("APP_PASSWORD", "short");
-    expect(proxy(new NextRequest("https://research.example.com/")).status).toBe(503);
-  });
-  it("requires and validates HTTP Basic credentials", () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("APP_PASSWORD", "test-password-long-enough");
-    expect(proxy(new NextRequest("https://research.example.com/")).status).toBe(401);
-    const headers = {
-      authorization: `Basic ${Buffer.from("personal:test-password-long-enough").toString("base64")}`,
-    };
-    expect(proxy(new NextRequest("https://research.example.com/", { headers })).status).toBe(200);
-    expect(
-      proxy(
-        new NextRequest("https://research.example.com/", {
-          headers: { authorization: "Basic wrong" },
-        }),
-      ).status,
-    ).toBe(401);
-  });
-  it("restricts anonymous development access to localhost", () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("APP_PASSWORD", "");
-    expect(proxy(new NextRequest("http://127.0.0.1:3000/")).status).toBe(200);
-    expect(proxy(new NextRequest("http://attacker.example:3000/")).status).toBe(403);
+describe("workspace requests", () => {
+  it.each(["development", "production"])("allows access without credentials in %s", (mode) => {
+    vi.stubEnv("NODE_ENV", mode);
+    const response = proxy(new NextRequest("https://research.example.com/"));
+    expect(response.status).toBe(200);
+    expect(response.headers.has("www-authenticate")).toBe(false);
   });
   it.each(["127.0.0.1:3000", "localhost:3000", "[::1]:3000"])(
     "accepts browser same-origin JSON writes on %s without APP_ORIGIN",
     (host) => {
       vi.stubEnv("NODE_ENV", "development");
-      vi.stubEnv("APP_PASSWORD", "");
       vi.stubEnv("APP_ORIGIN", "");
       const origin = `http://${host}`;
       const request = new NextRequest(`${origin}/api/tickers/NVDA/analyze`, {
@@ -61,7 +37,6 @@ describe("personal workspace access", () => {
     "null",
   ])("rejects a non-matching origin %s even on a loopback host", (origin) => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("APP_PASSWORD", "");
     vi.stubEnv("APP_ORIGIN", "");
     expect(
       proxy(
@@ -79,7 +54,6 @@ describe("personal workspace access", () => {
   });
   it.each(["same-site", "cross-site"])("rejects %s fetch metadata", (fetchSite) => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("APP_PASSWORD", "");
     vi.stubEnv("APP_ORIGIN", "");
     expect(
       proxy(
@@ -95,27 +69,18 @@ describe("personal workspace access", () => {
       ).status,
     ).toBe(403);
   });
-  it("uses the original Host for anonymous access and rejects malformed authorities", () => {
+  it("rejects malformed Host authorities", () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("APP_PASSWORD", "");
-    for (const host of [
-      "attacker.example:3000",
-      "127.0.0.2:3000",
-      "user@localhost:3000",
-      "localhost:3000/path",
-      "localhost:99999",
-    ])
+    for (const host of ["user@localhost:3000", "localhost:3000/path", "localhost:99999"])
       expect(proxy(new NextRequest("http://127.0.0.1:3000/", { headers: { host } })).status).toBe(
         403,
       );
   });
   it("honors an explicit canonical origin without trusting forwarded host headers", () => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("APP_PASSWORD", "test-password-long-enough");
     vi.stubEnv("APP_ORIGIN", "https://research.example.com");
     const headers = {
       host: "internal:3000",
-      authorization: `Basic ${Buffer.from("personal:test-password-long-enough").toString("base64")}`,
       "x-forwarded-host": "attacker.example",
       "sec-fetch-site": "same-origin",
       "content-type": "application/json",
@@ -145,7 +110,6 @@ describe("personal workspace access", () => {
   });
   it("rejects cross-origin and non-JSON writes", () => {
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("APP_PASSWORD", "");
     vi.stubEnv("APP_ORIGIN", "");
     expect(
       proxy(

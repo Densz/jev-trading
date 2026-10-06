@@ -27,7 +27,6 @@ export default defineConfig({
       X_PROFILE_READ_COST_USD: "0.01",
       X_PROFILE_LOOKUP_LIMIT: "3",
       X_PROFILE_CACHE_DAYS: "30",
-      APP_PASSWORD: "",
       CRON_SECRET: "",
       APP_ORIGIN: "",
       NEXT_BUILD_DIR: ".next-e2e",

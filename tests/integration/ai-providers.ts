@@ -5,7 +5,6 @@ import { testDatabaseUrl } from "../../scripts/test-database";
 
 process.env.DATABASE_URL = testDatabaseUrl();
 process.env.DEMO_MODE = "false";
-process.env.APP_PASSWORD = "integration-test-password-only";
 process.env.API_KEY_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 process.env.TYPESAFE_API_KEY = "";
 process.env.X_PROFILE_LOOKUP_LIMIT = "3";
@@ -80,9 +79,35 @@ try {
     saved.encryptedApiKey,
   );
   assert.ok(!JSON.stringify(await getAiSettings()).includes("encryptedApiKey"));
+  assert.equal((await getAiSettings()).canStoreKeys, true);
   assert.ok(!(await (await GET()).text()).includes(secret));
   await setDefaultProvider("openai");
   assert.equal((await getEngineConfiguration()).provider, "openai");
+  const originalFetch = globalThis.fetch;
+  let connectionCalls = 0;
+  try {
+    globalThis.fetch = async (url, options) => {
+      connectionCalls++;
+      assert.equal(new URL(String(url)).hostname, "api.openai.com");
+      assert.equal(new Headers(options?.headers).get("authorization"), `Bearer ${secret}`);
+      assert.equal(JSON.parse(String(options?.body)).model, "gpt-4.1");
+      return Response.json({
+        model: "gpt-4.1-version",
+        choices: [{ finish_reason: "stop", message: { content: "OK" } }],
+        usage: { prompt_tokens: 10, completion_tokens: 1 },
+      });
+    };
+    const connectionTest = await POST(
+      new Request("http://localhost/api/settings/ai", {
+        method: "POST",
+        body: JSON.stringify({ provider: "openai" }),
+      }),
+    );
+    assert.equal(connectionTest.status, 200);
+    assert.equal(connectionCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
   const pipeline = async () => {
     const configuration = await getEngineConfiguration();
     return new AnalysisPipeline(
@@ -139,12 +164,20 @@ try {
     400,
   );
   assert.equal(networkCalls, 3, "Demo connection tests cannot make external requests");
-  process.env.APP_PASSWORD = "";
-  await assert.rejects(
-    saveProvider({ provider: "deepseek", model: "deepseek-chat", apiKey: secret }),
-    /APP_PASSWORD/,
-  );
-  process.env.APP_PASSWORD = "integration-test-password-only";
+  const encryptionKey = process.env.API_KEY_ENCRYPTION_KEY;
+  try {
+    process.env.API_KEY_ENCRYPTION_KEY = "";
+    const unavailable = await getAiSettings();
+    assert.equal(unavailable.canStoreKeys, false);
+    assert.equal(unavailable.providers.find((item) => item.provider === "openai")?.ready, false);
+    await assert.rejects(
+      saveProvider({ provider: "deepseek", model: "deepseek-chat", apiKey: secret }),
+      /API_KEY_ENCRYPTION_KEY/,
+    );
+    await assert.rejects(getEngineConfiguration("openai"), /API_KEY_ENCRYPTION_KEY/);
+  } finally {
+    process.env.API_KEY_ENCRYPTION_KEY = encryptionKey;
+  }
   const replaced = "integration-replaced-key-not-real";
   await saveProvider({ provider: "openai", model: "gpt-4.1-mini", apiKey: replaced });
   assert.equal((await getEngineConfiguration()).apiKey, replaced);

@@ -54,8 +54,8 @@ export function AiSettings({ initial }: { initial: AiSettingsView }) {
           role="status"
           className="mt-5 rounded-lg border border-neutral-signal/25 bg-neutral-signal/5 p-4 text-xs leading-6"
         >
-          To save keys, configure APP_PASSWORD (at least 16 characters) and API_KEY_ENCRYPTION_KEY
-          (a random 32-byte key encoded as base64) on the server. See the README for setup.
+          To save keys, configure API_KEY_ENCRYPTION_KEY (a random 32-byte key encoded as base64) on
+          the server. See the README for setup.
         </p>
       )}
       {settings.demo && (

@@ -105,7 +105,6 @@ Secrets stay server-side; no secret uses a `NEXT_PUBLIC_*` variable. AI keys and
 | `TWELVE_DATA_CREDITS_PER_MINUTE` | No | Defaults to 8; only raise to match your provider plan. |
 | `DEMO_MODE` | No | Defaults to `false`; set `true` for synthetic data. |
 | `JEV_INPUT_USD_PER_MILLION` | No | Estimated input-token price; defaults to `0.042`. |
-| `APP_PASSWORD` | Production / saved keys | At least 16 characters; HTTP Basic username is `personal`. |
 | `APP_ORIGIN` | Reverse proxy | Optional canonical origin, such as `https://research.example.com`, for write-origin checks. |
 | `CRON_SECRET` | HTTP cron | At least 32 random characters; authenticated cron endpoint is disabled without it. |
 | `DAILY_CRON` | No | Scheduler expression in UTC; defaults to `15 22 * * 1-5`. |
@@ -119,19 +118,23 @@ V1 targets US-listed equities; international coverage requires a deliberate prov
 ### AI providers and encrypted keys
 
 1. Apply the checked-in migration with `pnpm prisma migrate deploy`.
-2. Set a random `APP_PASSWORD` of at least 16 characters and generate a separate encryption key:
+2. Generate an encryption key:
 
    ```bash
    node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
    ```
 
-   Store the generated value as `API_KEY_ENCRYPTION_KEY` in the server environment or secret manager, then restart the application. Use HTTPS for remote access.
+   Store the generated value as `API_KEY_ENCRYPTION_KEY` in the server environment or secret manager, then restart the application.
+   Use HTTPS for remote access.
 3. Open **AI settings** (`/settings`), enter the provider's API key and model ID, and save. Only the last four characters are displayed afterwards. **Test** sends a small billed request using the saved key/model; it is disabled in demo mode.
 4. Choose the default provider for scheduled runs, or select a provider before a manual ticker or batch analysis. Suggested model IDs are editable because account entitlements and provider catalogs change. An invalid or unavailable model fails visibly without saving a recommendation.
 
 Supported providers are Jev, OpenAI (Chat Completions with structured JSON), DeepSeek (JSON mode), and Claude (Anthropic Messages with validated JSON). Keys are encrypted using AES-256-GCM with random nonces and provider-bound authenticated data. The encryption key is never stored in PostgreSQL. API responses contain only key status and a masked suffix; credentials are excluded from normalized analysis inputs, saved engine results, and application logs. Network calls use fixed provider endpoints and reject redirects.
 
-This is one password-protected personal workspace. Keys belong to the workspace, not separate user accounts. Production hosting must keep the server environment and database administration restricted. Save and test operations also require `APP_PASSWORD` in development. Market/news credentials remain server environment variables.
+This is one personal workspace without a built-in login.
+Keys belong to the workspace, not separate user accounts.
+Saved keys require `API_KEY_ENCRYPTION_KEY` for encryption and decryption.
+Market/news credentials remain server environment variables.
 
 Keep the encryption key securely backed up separately from database backups. Changing or losing it prevents decryption of existing saved keys. To rotate, retain the old value until you are ready to replace every saved API key under the new value; this release does not automatically re-encrypt keys. Delete removes the stored credential and resets its default selection to Jev; a Jev environment key remains available. Revoke credentials at the provider to invalidate previously issued keys and backup copies.
 
@@ -385,10 +388,9 @@ ESLint 10 uses the official `@eslint/compat` bridge for Next.js plugins that sti
 
 ## Production
 
-Set all live keys, `DEMO_MODE=false`, and a random `APP_PASSWORD` of at least 16 characters.
+Set all live keys and `DEMO_MODE=false`.
 Apply migrations with `pnpm prisma migrate deploy`, then run `pnpm build` and `pnpm start`.
-Use username `personal` for the browser's HTTP Basic prompt.
-Production requests are rejected if the password is not configured, and anonymous development access is restricted to localhost.
+The application does not provide authentication; access control belongs to the hosting environment or reverse proxy.
 Deploy behind HTTPS and a reverse proxy when remote access is needed, and set `APP_ORIGIN` to the public origin.
 Unsafe cross-origin writes and non-JSON mutation requests are rejected.
 The cron endpoint authenticates independently with its longer secret.

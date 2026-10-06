@@ -116,7 +116,7 @@ model RateLimitBucket {
   count     Int
 }
 
-// One personal workspace, protected by APP_PASSWORD. No per-user accounts in V1.
+// One personal workspace. No per-user accounts in V1.
 model AiProviderConfig {
   provider        String   @id
   model           String

@@ -1,4 +1,7 @@
 node_modules
+.agents
+.claude
+.windsurf
 .db-backups
 .next
 .next-e2e

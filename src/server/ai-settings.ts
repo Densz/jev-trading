@@ -18,9 +18,10 @@ export async function getAiSettings(): Promise<AiSettingsView> {
     db.aiProviderConfig.findMany({ select: { provider: true, model: true, keySuffix: true } }),
   ]);
   const env = getEnv();
+  const canStoreKeys = encryptionReady();
   return {
     defaultProvider: aiProviderSchema.parse(settings?.defaultProvider ?? "jev"),
-    canStoreKeys: encryptionReady() && (env.APP_PASSWORD?.length ?? 0) >= 16,
+    canStoreKeys,
     demo: env.DEMO_MODE,
     providers: aiProviderSchema.options.map((provider) => {
       const stored = configurations.find((row) => row.provider === provider);
@@ -30,27 +31,18 @@ export async function getAiSettings(): Promise<AiSettingsView> {
         model:
           stored?.model ?? (provider === "jev" ? env.TYPESAFE_MODEL : aiProviders[provider].model),
         configured: !!stored || environmentKey,
-        ready: stored ? encryptionReady() && (env.APP_PASSWORD?.length ?? 0) >= 16 : environmentKey,
+        ready: stored ? canStoreKeys : environmentKey,
         keySource: stored ? "database" : environmentKey ? "environment" : null,
         keySuffix: stored?.keySuffix ?? null,
       };
     }),
   };
 }
-function requireProtectedSettings() {
-  if ((getEnv().APP_PASSWORD?.length ?? 0) < 16)
-    throw new AppError(
-      "CONFIGURATION",
-      "Set APP_PASSWORD to at least 16 characters before managing API keys.",
-      503,
-    );
-}
 export async function getEngineConfiguration(selected?: AiProvider): Promise<EngineConfiguration> {
   const settings = selected ? null : await db.aiSettings.findUnique({ where: { id: "workspace" } });
   const provider = selected ?? aiProviderSchema.parse(settings?.defaultProvider ?? "jev");
   const saved = await db.aiProviderConfig.findUnique({ where: { provider } });
   if (saved) {
-    requireProtectedSettings();
     return { provider, model: saved.model, apiKey: decryptApiKey(provider, saved.encryptedApiKey) };
   }
   const env = getEnv();
@@ -63,7 +55,6 @@ export async function getEngineConfiguration(selected?: AiProvider): Promise<Eng
   );
 }
 export async function saveProvider(value: unknown) {
-  requireProtectedSettings();
   const { provider, model, apiKey } = providerUpdateSchema.parse(value);
   if (apiKey) {
     const encryptedApiKey = encryptApiKey(provider, apiKey);
@@ -88,7 +79,6 @@ export async function saveProvider(value: unknown) {
   }
 }
 export async function setDefaultProvider(provider: AiProvider) {
-  requireProtectedSettings();
   await getEngineConfiguration(provider);
   await db.aiSettings.upsert({
     where: { id: "workspace" },
@@ -97,7 +87,6 @@ export async function setDefaultProvider(provider: AiProvider) {
   });
 }
 export async function deleteProvider(provider: AiProvider) {
-  requireProtectedSettings();
   await db.$transaction(async (tx) => {
     await tx.aiProviderConfig.deleteMany({ where: { provider } });
     await tx.aiSettings.updateMany({

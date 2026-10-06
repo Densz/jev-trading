@@ -32,7 +32,7 @@ test("encrypts keys, masks responses, selects defaults and supports replacement/
     expect(metadata).not.toContain(secret);
     expect(metadata).not.toContain(stored);
     expect(metadata).not.toContain("encryptedApiKey");
-    await page.locator("#openai-model").fill("gpt-4.1");
+    await page.locator("#openai-model").selectOption("gpt-4.1");
     await openai.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "AI settings saved" })).toBeVisible();
     const kept = (
@@ -77,6 +77,91 @@ test("encrypts keys, masks responses, selects defaults and supports replacement/
         .rowCount,
     ).toBe(0);
   } finally {
+    await client.end();
+  }
+});
+test("shows all suggested models and persists custom IDs for each AI provider", async ({
+  page,
+}) => {
+  const client = new Client({ connectionString: testDatabaseUrl() });
+  await client.connect();
+  try {
+    await client.query('DELETE FROM "AiProviderConfig"');
+    await client.query('DELETE FROM "AiSettings"');
+    await page.goto("/settings");
+    for (const { provider, label, models, custom } of [
+      {
+        provider: "openai",
+        label: "OpenAI",
+        models: ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
+        custom: "openai-custom-fixture",
+      },
+      {
+        provider: "deepseek",
+        label: "DeepSeek",
+        models: ["deepseek-chat", "deepseek-reasoner"],
+        custom: "deepseek-custom-fixture",
+      },
+      {
+        provider: "anthropic",
+        label: "Claude (Anthropic)",
+        models: ["claude-sonnet-4-5-20250929", "claude-haiku-4-5-20251001"],
+        custom: "claude-custom-fixture",
+      },
+    ]) {
+      const card = page
+        .locator("form")
+        .filter({ has: page.getByRole("heading", { name: label, exact: true }) });
+      const select = card.getByRole("combobox", { name: "Model", exact: true });
+      await expect(select.locator("option")).toHaveText([...models, "Custom model…"]);
+      const preset = models[models.length - 1];
+      await select.selectOption(preset);
+      await page.locator(`#${provider}-key`).fill(secret);
+      await card.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(card.getByText("Saved key: ••••-key", { exact: true })).toBeVisible();
+      await page.reload();
+      await expect(select).toHaveValue(preset);
+
+      await select.selectOption("custom");
+      const customInput = card.getByRole("textbox", { name: "Custom model ID", exact: true });
+      await customInput.fill(custom);
+      await select.selectOption(models[0]);
+      await expect(customInput).toHaveCount(0);
+      await select.selectOption("custom");
+      await expect(customInput).toHaveValue(custom);
+      await card.getByRole("button", { name: "Save", exact: true }).click();
+      await expect
+        .poll(
+          async () =>
+            (
+              await client.query('SELECT model FROM "AiProviderConfig" WHERE provider = $1', [
+                provider,
+              ])
+            ).rows[0]?.model,
+        )
+        .toBe(custom);
+      await page.reload();
+      await expect(select).toHaveValue("custom");
+      await expect(customInput).toHaveValue(custom);
+      await expect(page.locator(`#${provider}-key`)).toHaveValue("");
+
+      await select.selectOption(preset);
+      await card.getByRole("button", { name: "Save", exact: true }).click();
+      await expect
+        .poll(
+          async () =>
+            (
+              await client.query('SELECT model FROM "AiProviderConfig" WHERE provider = $1', [
+                provider,
+              ])
+            ).rows[0]?.model,
+        )
+        .toBe(preset);
+      await expect(customInput).toHaveCount(0);
+    }
+  } finally {
+    await client.query('DELETE FROM "AiProviderConfig"');
+    await client.query('DELETE FROM "AiSettings"');
     await client.end();
   }
 });

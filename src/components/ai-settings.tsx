@@ -120,9 +120,13 @@ function ProviderCard({
   demo: boolean;
   request: (method: string, body: unknown) => Promise<boolean>;
 }) {
-  const [model, setModel] = useState(item.model);
-  const [apiKey, setApiKey] = useState("");
   const { provider } = item;
+  const models = aiProviders[provider].models;
+  const suggestedModel = models.includes(item.model);
+  const [modelChoice, setModelChoice] = useState(suggestedModel ? item.model : "custom");
+  const [customModel, setCustomModel] = useState(suggestedModel ? "" : item.model);
+  const [apiKey, setApiKey] = useState("");
+  const model = modelChoice === "custom" ? customModel : modelChoice;
   return (
     <form
       className="panel p-5"
@@ -150,23 +154,41 @@ function ProviderCard({
             : "No key configured"}
       </p>
       <label htmlFor={`${provider}-model`} className="text-xs">
-        Model ID
+        Model
       </label>
-      <input
+      <select
         id={`${provider}-model`}
-        list={`${provider}-models`}
-        required
-        maxLength={100}
-        value={model}
-        onChange={(event) => setModel(event.target.value)}
+        value={modelChoice}
+        onChange={(event) => setModelChoice(event.target.value)}
         disabled={busy || !canStore}
         className="mt-1 mb-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-      />
-      <datalist id={`${provider}-models`}>
-        {aiProviders[provider].models.map((value) => (
-          <option key={value} value={value} />
+      >
+        {models.map((value) => (
+          <option key={value} value={value}>
+            {value}
+          </option>
         ))}
-      </datalist>
+        <option value="custom">Custom model…</option>
+      </select>
+      {modelChoice === "custom" && (
+        <>
+          <label htmlFor={`${provider}-custom-model`} className="text-xs">
+            Custom model ID
+          </label>
+          <input
+            id={`${provider}-custom-model`}
+            required
+            maxLength={100}
+            autoComplete="off"
+            spellCheck={false}
+            value={customModel}
+            onChange={(event) => setCustomModel(event.target.value)}
+            disabled={busy || !canStore}
+            placeholder="Enter a model ID"
+            className="mt-1 mb-3 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          />
+        </>
+      )}
       <label htmlFor={`${provider}-key`} className="text-xs">
         {item.configured ? "Replace API key" : "API key"}
       </label>

@@ -126,7 +126,10 @@ V1 targets US-listed equities; international coverage requires a deliberate prov
 
    Store the generated value as `API_KEY_ENCRYPTION_KEY` in the server environment or secret manager, then restart the application.
    Use HTTPS for remote access.
-3. Open **AI settings** (`/settings`), enter the provider's API key and model ID, and save. Only the last four characters are displayed afterwards. **Test** sends a small billed request using the saved key/model; it is disabled in demo mode.
+3. Open **AI settings** (`/settings`), enter the provider's API key, choose a model, and save.
+   The model dropdown shows all suggested IDs; choose **Custom model…** to enter another ID available to your API account.
+   Only the last four characters of the API key are displayed afterwards.
+   **Test** sends a small billed request using the saved key/model; it is disabled in demo mode.
 4. Choose the default provider for scheduled runs, or select a provider before a manual ticker or batch analysis. Suggested model IDs are editable because account entitlements and provider catalogs change. An invalid or unavailable model fails visibly without saving a recommendation.
 
 Supported providers are Jev, OpenAI (Chat Completions with structured JSON), DeepSeek (JSON mode), and Claude (Anthropic Messages with validated JSON). Keys are encrypted using AES-256-GCM with random nonces and provider-bound authenticated data. The encryption key is never stored in PostgreSQL. API responses contain only key status and a masked suffix; credentials are excluded from normalized analysis inputs, saved engine results, and application logs. Network calls use fixed provider endpoints and reject redirects.
